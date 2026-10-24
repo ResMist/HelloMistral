@@ -61,80 +61,55 @@ export class Neighbor {
     this.pickPatrol();
   }
 
-  // ---------------- procedural character ----------------
+  // ---------------- procedural character (jointed rig) ----------------
+  // A hand-built skeleton: every limb is a chain of pivots (shoulder->elbow,
+  // hip->knee) so animations bend at real joints instead of swinging boxes.
   buildModel() {
     const g = new THREE.Group();
     const L = (c) => new THREE.MeshLambertMaterial({ color: c });
     const skin = L(0xd8a878), shirt = L(0x4a7a4a), pants = L(0x5a5a68);
+    const j = (this.j = {});
 
-    // legs (pivot at hip)
-    this.legL = new THREE.Group();
-    this.legL.position.set(-0.14, 0.95, 0);
-    const legLm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.85, 0.24), pants);
-    legLm.position.y = -0.42;
-    this.legL.add(legLm);
-    const shoeL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.36), L(0x2a2a2a));
-    shoeL.position.set(0, -0.88, 0.05);
-    this.legL.add(shoeL);
-    g.add(this.legL);
+    // ---- hips (rig root) ----
+    const hips = new THREE.Group();
+    hips.position.y = 1.04;
+    g.add(hips);
+    j.root = hips;
+    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.3, 0.34), pants);
+    pelvis.position.y = -0.02;
+    hips.add(pelvis);
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.09, 0.37), L(0x3a3a3a));
+    belt.position.y = -0.15;
+    hips.add(belt);
 
-    this.legR = new THREE.Group();
-    this.legR.position.set(0.14, 0.95, 0);
-    const legRm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.85, 0.24), pants);
-    legRm.position.y = -0.42;
-    this.legR.add(legRm);
-    const shoeR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.36), L(0x2a2a2a));
-    shoeR.position.set(0, -0.88, 0.05);
-    this.legR.add(shoeR);
-    g.add(this.legR);
-
-    // torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.72, 0.34), shirt);
-    torso.position.y = 1.35;
-    g.add(torso);
-    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.08, 0.36), L(0x3a3a3a));
-    belt.position.y = 1.0;
-    g.add(belt);
-    // shirt buttons
+    // ---- torso (spine) ----
+    const torso = new THREE.Group();
+    hips.add(torso);
+    j.torso = torso;
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.36), shirt);
+    chest.position.y = 0.42;
+    torso.add(chest);
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.24, 0.41), shirt);
+    belly.position.y = 0.05;
+    torso.add(belly);
     for (let i = 0; i < 3; i++) {
       const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.02, 8), L(0xd9d9d9));
       btn.rotation.x = Math.PI / 2;
-      btn.position.set(0, 1.55 - i * 0.22, 0.18);
-      g.add(btn);
+      btn.position.set(0, 0.6 - i * 0.19, 0.2);
+      torso.add(btn);
     }
-    // collar
     const collar = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.1), L(0x3d663d));
-    collar.position.set(0, 1.68, 0.15);
-    g.add(collar);
-    // watch on left wrist
-    const watch = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.07, 0.07), L(0x222222));
-    watch.position.set(0, -0.62, 0);
-    this.armL.add(watch);
+    collar.position.set(0, 0.76, 0.15);
+    torso.add(collar);
 
-    // arms (pivot at shoulder)
-    this.armL = new THREE.Group();
-    this.armL.position.set(-0.39, 1.62, 0);
-    const armLm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.68, 0.2), shirt);
-    armLm.position.y = -0.34;
-    this.armL.add(armLm);
-    const handL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.16), skin);
-    handL.position.y = -0.72;
-    this.armL.add(handL);
-    g.add(this.armL);
-
-    this.armR = new THREE.Group();
-    this.armR.position.set(0.39, 1.62, 0);
-    const armRm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.68, 0.2), shirt);
-    armRm.position.y = -0.34;
-    this.armR.add(armRm);
-    const handR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.16), skin);
-    handR.position.y = -0.72;
-    this.armR.add(handR);
-    g.add(this.armR);
-
-    // head
+    // ---- neck & head ----
+    const neck = new THREE.Group();
+    neck.position.y = 0.82;
+    torso.add(neck);
+    j.neck = neck;
     this.head = new THREE.Group();
-    this.head.position.y = 1.86;
+    this.head.position.y = 0.14;
+    neck.add(this.head);
     const skull = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, 0.32), skin);
     this.head.add(skull);
     const nose = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.12), skin);
@@ -157,18 +132,15 @@ export class Neighbor {
     this.head.add(this.mouth);
     this.eyeMat = L(0xffffff);
     this.pupilMat = new THREE.MeshBasicMaterial({ color: 0x181818 });
-    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.04), this.eyeMat);
-    eyeL.position.set(-0.08, 0.03, 0.17);
-    this.head.add(eyeL);
-    const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.04), this.eyeMat);
-    eyeR.position.set(0.08, 0.03, 0.17);
-    this.head.add(eyeR);
-    this.pupilL = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.03), this.pupilMat);
-    this.pupilL.position.set(-0.08, 0.03, 0.19);
-    this.head.add(this.pupilL);
-    this.pupilR = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.03), this.pupilMat);
-    this.pupilR.position.set(0.08, 0.03, 0.19);
-    this.head.add(this.pupilR);
+    for (const s of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.04), this.eyeMat);
+      eye.position.set(s * 0.08, 0.03, 0.17);
+      this.head.add(eye);
+      const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.03), this.pupilMat);
+      pupil.position.set(s * 0.08, 0.03, 0.19);
+      if (s === -1) this.pupilL = pupil; else this.pupilR = pupil;
+      this.head.add(pupil);
+    }
     // flat cap
     const cap = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.09, 0.35), L(0x3a4a5a));
     cap.position.y = 0.21;
@@ -176,9 +148,58 @@ export class Neighbor {
     const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.14), L(0x3a4a5a));
     brim.position.set(0, 0.17, 0.22);
     this.head.add(brim);
-    g.add(this.head);
 
-    // blob contact shadow so he is grounded
+    // ---- arms: shoulder -> elbow -> hand ----
+    const mkArm = (s) => {
+      const shoulder = new THREE.Group();
+      shoulder.position.set(s * 0.39, 0.62, 0);
+      torso.add(shoulder);
+      const delt = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), shirt);
+      shoulder.add(delt);
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.34, 0.18), shirt);
+      upper.position.y = -0.19;
+      shoulder.add(upper);
+      const elbow = new THREE.Group();
+      elbow.position.y = -0.38;
+      shoulder.add(elbow);
+      const fore = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.3, 0.15), shirt);
+      fore.position.y = -0.15;
+      elbow.add(fore);
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.15), skin);
+      hand.position.y = -0.36;
+      elbow.add(hand);
+      return { shoulder, elbow };
+    };
+    j.armL = mkArm(-1);
+    j.armR = mkArm(1);
+    // wristwatch on the left forearm
+    const watch = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.06), L(0x222222));
+    watch.position.y = -0.26;
+    j.armL.elbow.add(watch);
+
+    // ---- legs: hip -> knee -> foot ----
+    const mkLeg = (s) => {
+      const hip = new THREE.Group();
+      hip.position.set(s * 0.15, -0.1, 0);
+      hips.add(hip);
+      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.4, 0.24), pants);
+      thigh.position.y = -0.2;
+      hip.add(thigh);
+      const knee = new THREE.Group();
+      knee.position.y = -0.44;
+      hip.add(knee);
+      const shin = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.38, 0.2), pants);
+      shin.position.y = -0.19;
+      knee.add(shin);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.36), L(0x2a2a2a));
+      foot.position.set(0, -0.42, 0.07);
+      knee.add(foot);
+      return { hip, knee };
+    };
+    j.legL = mkLeg(-1);
+    j.legR = mkLeg(1);
+
+    // blob contact shadow
     const blob = new THREE.Mesh(
       new THREE.PlaneGeometry(1.3, 1.3),
       new THREE.MeshBasicMaterial({
@@ -533,29 +554,61 @@ export class Neighbor {
   }
 
   animate(dt) {
+    const j = this.j;
+    if (!j) return;
     const mv = this.moving || 0;
-    this.animT += dt * (2 + mv * 1.8);
     const chase = this.state === STATE.CHASE;
-    const swing = Math.sin(this.animT * 3) * Math.min(1, mv / 3);
-    if (mv > 0.1) {
-      this.legL.rotation.x = swing * 0.7;
-      this.legR.rotation.x = -swing * 0.7;
+    this.animT += dt * (2 + mv * 1.9);
+    const t = this.animT;
+    const stride = Math.min(1.4, mv / 3);
+    const swL = Math.sin(t * 3);
+    const swR = Math.sin(t * 3 + Math.PI);
+    const ease = (target, cur, k = 10) => cur + (target - cur) * Math.min(1, dt * k);
+
+    // ---- legs: hip swing + knee flexion ----
+    if (stride < 0.05) {
+      // idle weight shift
+      j.legL.hip.rotation.x = ease(Math.sin(t * 0.8) * 0.03, j.legL.hip.rotation.x);
+      j.legR.hip.rotation.x = ease(-Math.sin(t * 0.8) * 0.03, j.legR.hip.rotation.x);
+      j.legL.knee.rotation.x = ease(0.04, j.legL.knee.rotation.x);
+      j.legR.knee.rotation.x = ease(0.04, j.legR.knee.rotation.x);
     } else {
-      this.legL.rotation.x *= 0.85;
-      this.legR.rotation.x *= 0.85;
+      j.legL.hip.rotation.x = ease(-swL * 0.6 * stride, j.legL.hip.rotation.x);
+      j.legR.hip.rotation.x = ease(-swR * 0.6 * stride, j.legR.hip.rotation.x);
+      // knees bend while the leg swings forward
+      j.legL.knee.rotation.x = ease((swL > 0 ? swL : 0) * 0.85 * stride + 0.04, j.legL.knee.rotation.x);
+      j.legR.knee.rotation.x = ease((swR > 0 ? swR : 0) * 0.85 * stride + 0.04, j.legR.knee.rotation.x);
     }
+
+    // ---- arms ----
     if (chase) {
-      this.armL.rotation.x = -1.25 + Math.sin(this.animT * 6) * 0.15;
-      this.armR.rotation.x = -1.25 - Math.sin(this.animT * 6) * 0.15;
+      // reaching grab pose, pumping with the gait
+      const pump = Math.sin(t * 6) * 0.12;
+      j.armL.shoulder.rotation.x = ease(-1.35 + pump, j.armL.shoulder.rotation.x);
+      j.armR.shoulder.rotation.x = ease(-1.35 - pump, j.armR.shoulder.rotation.x);
+      j.armL.elbow.rotation.x = ease(-0.25, j.armL.elbow.rotation.x);
+      j.armR.elbow.rotation.x = ease(-0.25, j.armR.elbow.rotation.x);
     } else {
-      this.armL.rotation.x = -swing * 0.5;
-      this.armR.rotation.x = swing * 0.5;
+      // counter-swinging arms; relaxed hang when idle
+      const breathe = Math.sin(t * 0.9) * 0.04;
+      j.armL.shoulder.rotation.x = ease(-swR * 0.45 * stride - breathe, j.armL.shoulder.rotation.x);
+      j.armR.shoulder.rotation.x = ease(-swL * 0.45 * stride + breathe, j.armR.shoulder.rotation.x);
+      j.armL.elbow.rotation.x = ease(-0.15 - 0.2 * stride, j.armL.elbow.rotation.x);
+      j.armR.elbow.rotation.x = ease(-0.15 - 0.2 * stride, j.armR.elbow.rotation.x);
     }
-    // subtle head motion while patrolling
+
+    // ---- body: bob, lean, breathing ----
+    j.root.position.y = 1.04 + Math.abs(Math.sin(t * 3)) * 0.045 * stride;
+    j.torso.rotation.x = ease(chase ? 0.2 : 0.03 + Math.sin(t * 1.1) * 0.02, j.torso.rotation.x);
+    j.torso.rotation.z = Math.sin(t * 3) * 0.04 * stride;
+
+    // ---- head ----
     if (!chase) {
-      this.head.rotation.y = Math.sin(this.animT * 0.7) * 0.3;
+      j.neck.rotation.y = Math.sin(t * 0.7) * 0.35;
+      j.neck.rotation.x = ease(0.02, j.neck.rotation.x);
     } else {
-      this.head.rotation.y = 0;
+      j.neck.rotation.y = ease(0, j.neck.rotation.y, 6);
+      j.neck.rotation.x = ease(-0.12, j.neck.rotation.x);
     }
     this.moving = 0;
   }

@@ -3,9 +3,10 @@
 A 3D stealth-horror game about breaking into your neighbor's house and reaching his
 basement — while an **AI that learns from your behavior** hunts you down.
 
-An original fan-made tribute to the "sneak into the neighbor's house" genre, built from
-scratch with **Three.js**. Every model is procedural geometry (boxes, cylinders, spheres) —
-no textures, no external assets, no content from any commercial game.
+An unofficial **fan-made** game inspired by *Hello Neighbor* (Eerie Guest / tinyBuild).
+Not affiliated with or endorsed by them — no assets or content from the original game
+are used. Everything is built from scratch with **Three.js**: procedural geometry,
+a hand-built joint rig for the neighbor's animations, no textures, no external assets.
 
 ## Run it
 
