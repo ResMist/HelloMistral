@@ -59,7 +59,9 @@ export class Player {
     this.pitch = clamp(this.pitch - mdy * 0.0022, -1.35, 1.35);
 
     // ---- crouch / sprint ----
-    this.crouching = input.down('ControlLeft') || input.down('KeyC');
+    // NOTE: Ctrl is intentionally NOT a crouch key — Ctrl+W closes the browser tab
+    // and page JS can never intercept that shortcut. C only.
+    this.crouching = input.down('KeyC');
     this.sprinting = input.down('ShiftLeft') && !this.crouching;
     const targetH = this.crouching ? 1.05 : 1.7;
     this.height += clamp(targetH - this.height, -dt * 4, dt * 4);

@@ -29,7 +29,7 @@ Opening `index.html` directly via `file://` will **not** work (module CORS rules
 | WASD | Move |
 | Mouse | Look |
 | Shift | Sprint — fast but **loud** |
-| Ctrl / C | Crouch — slow and **quiet** |
+| C | Crouch — slow and **quiet** |
 | Space | Jump |
 | E | Interact (hold for picking locks, prying boards, disarming traps) |
 | LMB | Throw held object — a great distraction |
