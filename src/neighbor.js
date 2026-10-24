@@ -39,6 +39,9 @@ export class Neighbor {
     this.visionBonus = memory.visionBonus();
     this.trapQueue = [];      // entry ids to trap
     this.trapWait = false;
+    this.stickT = 0;          // stuck-in-corner accumulator
+    this.sideT = 0;           // sidestep timer
+    this.sideSign = 1;
     this.buildModel();
     this.pickPatrol();
   }
@@ -92,6 +95,21 @@ export class Neighbor {
     const belt = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.08, 0.36), L(0x3a3a3a));
     belt.position.y = 1.0;
     g.add(belt);
+    // shirt buttons
+    for (let i = 0; i < 3; i++) {
+      const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.02, 8), L(0xd9d9d9));
+      btn.rotation.x = Math.PI / 2;
+      btn.position.set(0, 1.55 - i * 0.22, 0.18);
+      g.add(btn);
+    }
+    // collar
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.1), L(0x3d663d));
+    collar.position.set(0, 1.68, 0.15);
+    g.add(collar);
+    // watch on left wrist
+    const watch = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.07, 0.07), L(0x222222));
+    watch.position.set(0, -0.62, 0);
+    this.armL.add(watch);
 
     // arms (pivot at shoulder)
     this.armL = new THREE.Group();
@@ -125,9 +143,18 @@ export class Neighbor {
     const mustache = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.07), L(0x4a3323));
     mustache.position.set(0, -0.09, 0.21);
     this.head.add(mustache);
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.05), L(0x4a3323));
-    brow.position.set(0, 0.09, 0.17);
-    this.head.add(brow);
+    const browGeo = new THREE.BoxGeometry(0.12, 0.05, 0.05);
+    this.browL = new THREE.Mesh(browGeo, L(0x4a3323));
+    this.browL.position.set(-0.07, 0.09, 0.17);
+    this.browL.rotation.z = 0.12;
+    this.head.add(this.browL);
+    this.browR = new THREE.Mesh(browGeo, L(0x4a3323));
+    this.browR.position.set(0.07, 0.09, 0.17);
+    this.browR.rotation.z = -0.12;
+    this.head.add(this.browR);
+    this.mouth = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.03, 0.03), L(0x5a2f2f));
+    this.mouth.position.set(0, -0.155, 0.21);
+    this.head.add(this.mouth);
     this.eyeMat = L(0xffffff);
     this.pupilMat = new THREE.MeshBasicMaterial({ color: 0x181818 });
     const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.04), this.eyeMat);
@@ -151,12 +178,30 @@ export class Neighbor {
     this.head.add(brim);
     g.add(this.head);
 
+    // blob contact shadow so he is grounded
+    const blob = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.3, 1.3),
+      new THREE.MeshBasicMaterial({
+        map: this.world.shadowTexture(), transparent: true, opacity: 0.55, depthWrite: false,
+      })
+    );
+    blob.rotation.x = -Math.PI / 2;
+    blob.position.y = 0.03;
+    g.add(blob);
+
     this.model = g;
     this.world.scene.add(g);
   }
 
   setEyesChase(on) {
     this.pupilMat.color.setHex(on ? 0xff2222 : 0x181818);
+    if (this.browL) {
+      this.browL.rotation.z = on ? 0.42 : 0.12;
+      this.browR.rotation.z = on ? -0.42 : -0.12;
+    }
+    if (this.mouth) {
+      this.mouth.scale.y = on ? 3.5 : 1;
+    }
   }
 
   // ---------------- senses ----------------
@@ -164,7 +209,7 @@ export class Neighbor {
     const world = this.world;
     const px = player.pos.x, py = player.eyeY, pz = player.pos.z;
     const ex = this.pos.x, ey = this.pos.y + 1.75, ez = this.pos.z;
-    const range = 11 + this.visionBonus;
+    const range = 12 + this.visionBonus;
     const dx = px - ex, dy = py - ey, dz = pz - ez;
     const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (d > range) return false;
@@ -201,6 +246,7 @@ export class Neighbor {
     if (hot.length && Math.random() < 0.45) {
       pick = rooms.find((r) => r.id === hot[Math.floor(Math.random() * Math.min(3, hot.length))]);
     }
+    if (!pick && Math.random() < 0.3) pick = rooms.find((r) => r.id === 'work');
     if (!pick) pick = rooms[Math.floor(Math.random() * rooms.length)];
     this.targetRoom = pick;
     const node = this.nodeInRoom(pick.id);
@@ -241,7 +287,7 @@ export class Neighbor {
     sees = this.lastVision;
     if (sees) {
       const d = dist2(this.pos.x, this.pos.z, player.pos.x, player.pos.z);
-      const range = 11 + this.visionBonus;
+      const range = 12 + this.visionBonus;
       let rate = 2.2 * (1.15 - d / range);
       if (player.sprinting) rate *= 1.7;
       if (player.crouching) rate *= 0.55;
@@ -258,6 +304,18 @@ export class Neighbor {
       }
     } else {
       this.aware = Math.max(0, this.aware - dt * 0.25);
+    }
+    // proximity sense: he feels someone right next to him
+    if (!sees && dist2(this.pos.x, this.pos.z, player.pos.x, player.pos.z) < 1.2 &&
+        Math.abs(this.pos.y - player.pos.y) < 1.4) {
+      this.aware = Math.min(1, this.aware + dt * 3);
+    }
+    // lingering suspicion: go check where he last saw you
+    if (this.state === STATE.ROUTINE && this.aware > 0.5 && this.lastSeen) {
+      this.noisePos = { x: this.lastSeen.x, y: this.lastSeen.y, z: this.lastSeen.z };
+      this.state = STATE.INVESTIGATE;
+      this.path = [];
+      this.lookT = 0;
     }
 
     // ---- security cameras ----
@@ -295,7 +353,7 @@ export class Neighbor {
             break;
           }
         }
-        if (this.followPath(dt, 2.6)) {
+        if (this.followPath(dt, 2.9)) {
           this.waitT -= dt;
           if (this.waitT <= 0) {
             this.waitT = 1.5 + Math.random() * 2.5;
@@ -312,7 +370,7 @@ export class Neighbor {
           this.pathI = 0;
           if (!this.path.length) this.path = [{ x: n.x, y: n.y, z: n.z }];
         }
-        if (this.followPath(dt, 3.5)) {
+        if (this.followPath(dt, 3.9)) {
           this.lookT += dt;
           this.yaw += Math.sin(this.lookT * 2.4) * dt * 2.2;
           if (this.lookT > 4) {
@@ -332,14 +390,14 @@ export class Neighbor {
             player.pos.x, player.eyeY, player.pos.z);
           if (direct && Math.abs(this.pos.y - player.pos.y) < 1.2) {
             this.path = [];
-            this.steerTo(player.pos.x, player.pos.z, dt, 5.0 + this.speedBonus);
+            this.steerTo(player.pos.x, player.pos.z, dt, 5.7 + this.speedBonus);
           } else {
             if (!this.path.length) {
               this.path = world.findPath(this.pos.x, this.pos.y, this.pos.z,
                 this.lastSeen.x, this.lastSeen.y, this.lastSeen.z);
               this.pathI = 0;
             }
-            this.followPath(dt, 5.0 + this.speedBonus);
+            this.followPath(dt, 5.7 + this.speedBonus);
           }
         } else {
           this.lostT += dt;
@@ -349,7 +407,7 @@ export class Neighbor {
                 this.lastSeen.x, this.lastSeen.y, this.lastSeen.z);
               this.pathI = 0;
             }
-            this.followPath(dt, 5.0 + this.speedBonus);
+            this.followPath(dt, 5.7 + this.speedBonus);
           }
           if (this.lostT > 4.5) {
             this.state = STATE.SEARCH;
@@ -373,7 +431,7 @@ export class Neighbor {
           const base = this.lastSeen || this.pos;
           world.nodes.forEach((n) => {
             const d = Math.hypot(n.x - base.x, n.z - base.z);
-            if (d < 12 && Math.abs(n.y - this.pos.y) < 2.4) cands.push(n);
+            if (d < 12 && Math.abs(n.y - this.pos.y) < 3.4) cands.push(n);
           });
           if (cands.length) {
             const n = cands[Math.floor(Math.random() * cands.length)];
@@ -417,11 +475,31 @@ export class Neighbor {
     const dx = x - this.pos.x, dz = z - this.pos.z;
     const d = Math.hypot(dx, dz);
     if (d < 0.05) return;
-    const want = Math.atan2(dx, dz);
+    let ux = dx / d, uz = dz / d;
+    // sidestep while wedged against geometry
+    if (this.sideT > 0) {
+      this.sideT -= dt;
+      const px = -uz * this.sideSign, pz = ux * this.sideSign;
+      ux = px; uz = pz;
+    }
+    const want = Math.atan2(ux, uz);
     this.yaw += angleDelta(this.yaw, want) * Math.min(1, dt * 8);
-    this.pos.x += (dx / d) * speed * dt;
-    this.pos.z += (dz / d) * speed * dt;
+    const ox = this.pos.x, oz = this.pos.z;
+    this.pos.x += ux * speed * dt;
+    this.pos.z += uz * speed * dt;
     this.world.resolveCollision(this.pos, 0.45, this.pos.y, 1.9);
+    // did we actually move? if not, we're stuck
+    const moved = Math.hypot(this.pos.x - ox, this.pos.z - oz);
+    if (moved < speed * dt * 0.35) {
+      this.stickT += dt;
+      if (this.stickT > 0.35 && this.sideT <= 0) {
+        this.sideT = 0.45;
+        this.sideSign = Math.random() < 0.5 ? 1 : -1;
+        this.stickT = 0;
+      }
+    } else {
+      this.stickT = Math.max(0, this.stickT - dt * 2);
+    }
     this.moving = speed;
     // open doors in the way
     for (const door of this.world.doors) {

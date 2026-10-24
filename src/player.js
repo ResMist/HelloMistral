@@ -12,7 +12,7 @@ export class Player {
     this.input = input;
     this.game = game;
     this.pos = new THREE.Vector3(0, 0, 13.5);
-    this.yaw = Math.PI; // facing the house
+    this.yaw = 0; // facing the house (down -Z)
     this.pitch = 0;
     this.vy = 0;
     this.height = 1.7;
@@ -25,21 +25,24 @@ export class Player {
     this.keyring = new Set();
     this.hold = null;
     this.projectiles = [];
+    this.bobT = 0;     // head-bob phase
+    this.bobAmt = 0;    // head-bob intensity
   }
 
   get eyeY() { return this.pos.y + this.height * 0.94; }
 
   cameraDir() {
+    // Three.js cameras look down -Z; forward is (-sin(yaw), -cos(yaw))
     return new THREE.Vector3(
-      Math.sin(this.yaw) * Math.cos(this.pitch),
+      -Math.sin(this.yaw) * Math.cos(this.pitch),
       Math.sin(this.pitch),
-      Math.cos(this.yaw) * Math.cos(this.pitch)
+      -Math.cos(this.yaw) * Math.cos(this.pitch)
     );
   }
 
   spawn() {
     this.pos.set(0, 0, 13.5);
-    this.yaw = Math.PI;
+    this.yaw = 0;
     this.pitch = 0;
     this.vy = 0;
     this.trapT = 0;
@@ -62,6 +65,7 @@ export class Player {
     this.height += clamp(targetH - this.height, -dt * 4, dt * 4);
 
     // ---- move ----
+    this.bobAmt += (0 - this.bobAmt) * Math.min(1, dt * 5);
     let speed = 0;
     if (this.trapT <= 0) {
       speed = this.crouching ? 1.9 : this.sprinting ? 6.1 : 3.6;
@@ -74,12 +78,14 @@ export class Player {
       if (len > 0) {
         mx /= len; mz /= len;
         const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
-        const dx = (mz * sin + mx * cos) * speed * dt;
-        const dz = (mz * cos - mx * sin) * speed * dt;
+        const dx = (-mz * sin - mx * cos) * speed * dt;
+        const dz = (-mz * cos + mx * sin) * speed * dt;
         this.pos.x += dx;
         this.pos.z += dz;
         // footstep noise
         this.stepAcc += Math.hypot(dx, dz);
+        this.bobT += dt * (this.sprinting ? 11 : 7.5);
+        this.bobAmt += (1 - this.bobAmt) * Math.min(1, dt * 8);
         const stride = this.sprinting ? 1.5 : 1.1;
         if (this.stepAcc > stride) {
           this.stepAcc = 0;
@@ -230,6 +236,10 @@ export class Player {
           hold: 0,
         };
       });
+    }
+    // doorbell (front porch)
+    if (this.pos.y < 1.2) {
+      consider(0.65, 1.4, 8.2, () => ({ kind: 'bell', label: 'Ring the doorbell', hold: 0 }));
     }
     for (const trap of world.traps) {
       if (!trap.armed) continue;
@@ -390,6 +400,11 @@ export class Player {
         game.hud.message('You climb through the upstairs window.');
         break;
       }
+      case 'bell':
+        game.audio.play('bell');
+        game.noise(0, 0, 9, 24, 'doorbell');
+        game.hud.message('You ring the doorbell. Bold.');
+        break;
       case 'steel': {
         world.openBasement();
         game.audio.play('unlock');

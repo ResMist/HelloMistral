@@ -36,6 +36,17 @@ class Game {
 
     this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 200);
     this.camera.rotation.order = 'YXZ';
+    this.scene.add(this.camera);
+
+    // flashlight attached to the camera
+    this.flashOn = true;
+    this.flash = new THREE.SpotLight(0xfff0d0, 16, 26, 0.42, 0.4, 1.5);
+    this.flash.position.set(0.12, -0.12, 0);
+    this.camera.add(this.flash);
+    this.flashTarget = new THREE.Object3D();
+    this.flashTarget.position.set(0, 0, -1);
+    this.camera.add(this.flashTarget);
+    this.flash.target = this.flashTarget;
 
     this.input = new Input(this.canvas);
     this.audio = new AudioSys();
@@ -243,9 +254,15 @@ class Game {
       this.world.update(dt);
       this.checkWin();
 
-      // camera
-      this.camera.position.set(this.player.pos.x, this.player.pos.y + this.player.height * 0.94, this.player.pos.z);
+      // camera (+ head bob)
+      this.camera.position.set(this.player.pos.x, this.player.pos.y + this.player.height * 0.94
+        + Math.sin(this.player.bobT) * 0.035 * this.player.bobAmt, this.player.pos.z);
       this.camera.rotation.set(this.player.pitch, this.player.yaw, 0);
+
+      // FOV kicks wider while chased
+      const chaseFov = this.neighbor.state === 'chase' ? 80 : 72;
+      this.camera.fov += (chaseFov - this.camera.fov) * Math.min(1, dt * 4);
+      this.camera.updateProjectionMatrix();
 
       // HUD
       const room = this.world.roomAt(this.player.pos.x, this.player.pos.z, this.player.pos.y);
@@ -258,6 +275,12 @@ class Game {
       if (this.input.pressed('KeyM')) {
         const m = this.audio.toggleMute();
         this.hud.message(m ? 'Sound muted' : 'Sound on', 1.2);
+      }
+      // flashlight toggle
+      if (this.input.pressed('KeyF')) {
+        this.flashOn = !this.flashOn;
+        this.flash.intensity = this.flashOn ? 16 : 0;
+        this.hud.message(this.flashOn ? 'Flashlight on' : 'Flashlight off', 1);
       }
     } else {
       this.hud.setAlert('');

@@ -86,6 +86,10 @@ export class AudioSys {
       case 'caught': this.tone(220, 1.2, { type: 'sawtooth', gain: 0.16, slide: -160 }); this.tone(110, 1.2, { type: 'square', gain: 0.1, slide: -70 }); break;
       case 'win': [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.tone(f, 0.4, { gain: 0.12 }), i * 140)); break;
       case 'heartbeat': this.burst(0.09, 0.16, 65, 0.9); break;
+      case 'bell':
+        this.tone(830, 0.5, { type: 'triangle', gain: 0.22 });
+        this.tone(660, 0.8, { type: 'triangle', gain: 0.18 });
+        break;
       case 'board': this.tone(240, 0.25, { type: 'square', gain: 0.07, slide: -100 }); this.burst(0.12, 0.1, 400); break;
       case 'climb': this.burst(0.25, 0.08, 500, 0.6); break;
     }

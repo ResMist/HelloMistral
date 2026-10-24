@@ -34,6 +34,7 @@ Opening `index.html` directly via `file://` will **not** work (module CORS rules
 | LMB | Throw held object — a great distraction |
 | Q | Drop held object |
 | M | Mute |
+| F | Flashlight |
 | Esc | Pause |
 
 **Goal:** find the three keys (red, blue, green) hidden around the house and
@@ -44,7 +45,8 @@ unlock the steel basement door in the workshop.
 - 🟢 **Green key** — in the study (the door is locked — find a lockpick)
 
 A crowbar (garage shelf) pries boarded-up windows back open. Cans and boxes can be
-thrown to lure the neighbor away.
+thrown to lure the neighbor away. You can also ring the front doorbell — a very loud
+way to make him come to the door while you sneak round the back.
 
 ## The neighbor's AI
 

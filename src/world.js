@@ -65,6 +65,7 @@ export class World {
         leaf: L(0x14301a),
         trunk: L(0x3a2a1a),
         car: L(0x7a2a2a),
+        curtain: L(0x7a5a5a),
         moon: L(0xd9d9c0, { emissive: 0x8a8a70 }),
       };
     }
@@ -82,6 +83,35 @@ export class World {
 
   deco(cx, cy, cz, sx, sy, sz, mat, parent = null) {
     return this.box(cx, cy, cz, sx, sy, sz, mat, false, false, parent);
+  }
+
+  // radial-gradient blob texture used for cheap contact shadows
+  shadowTexture() {
+    if (!this._shadowTex) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const ctx = c.getContext('2d');
+      const grad = ctx.createRadialGradient(64, 64, 8, 64, 64, 62);
+      grad.addColorStop(0, 'rgba(0,0,0,0.85)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 128, 128);
+      this._shadowTex = new THREE.CanvasTexture(c);
+    }
+    return this._shadowTex;
+  }
+
+  blobShadow(x, y, z, r) {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(r * 2, r * 2),
+      new THREE.MeshBasicMaterial({
+        map: this.shadowTexture(), transparent: true, opacity: 0.5, depthWrite: false,
+      })
+    );
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, y, z);
+    this.group.add(m);
+    return m;
   }
 
   // ---------- walls ----------
@@ -191,6 +221,30 @@ export class World {
       this.group.add(glass);
       this.deco(cx, y + 2.18, cz, T + 0.02, 0.08, op.width, this.mat().woodDark);
       this.deco(cx, y + 0.92, cz, T + 0.02, 0.1, op.width, this.mat().woodDark);
+    }
+    // curtain rod + curtains on the inside face
+    {
+      const wm = this.mat();
+      const ix = cx - normal.x * 0.3, iz = cz - normal.z * 0.3;
+      const rod = new THREE.Mesh(
+        horizontal
+          ? new THREE.CylinderGeometry(0.025, 0.025, op.width + 0.3, 8)
+          : new THREE.CylinderGeometry(0.03, 0.03, 0.06, 8),
+        wm.metal
+      );
+      rod.rotation.z = horizontal ? Math.PI / 2 : 0;
+      rod.rotation.x = horizontal ? 0 : Math.PI / 2;
+      rod.position.set(ix, y + 2.08, iz);
+      this.group.add(rod);
+      const half = (op.width - 0.1) / 4;
+      for (const s of [-1, 1]) {
+        const cur = new THREE.Mesh(
+          horizontal ? new THREE.BoxGeometry(half, 1.25, 0.05) : new THREE.BoxGeometry(0.05, 1.25, half),
+          wm.curtain
+        );
+        cur.position.set(horizontal ? ix + s * half : ix, y + 1.42, horizontal ? iz : iz + s * half);
+        this.group.add(cur);
+      }
     }
     const group = new THREE.Group();
     this.group.add(group);
@@ -575,6 +629,13 @@ export class World {
     this.box(0, -0.06, 0, 20.5, 0.12, 16.5, m.floorWood, false, false); // house floor
     this.box(0, 0.02, 13, 2, 0.1, 9, m.path, false, false); // path
     this.box(0, 0.06, 8.75, 2.2, 0.14, 1.0, m.concrete, false, false); // porch
+    // porch lamp + warm light
+    this.deco(0.65, 2.25, 8.6, 0.16, 0.28, 0.16, m.dark);
+    const porchLight = new THREE.PointLight(0xffb060, 3.5, 7, 1.6);
+    porchLight.position.set(0.65, 2.1, 8.5);
+    this.scene.add(porchLight);
+    // doorbell button beside the front door
+    this.deco(0.65, 1.35, 8.16, 0.06, 0.12, 0.04, m.metal);
 
     // fence
     for (const [fx, fz, sx, sz] of [[0, 20, 40, 0.2], [0, -20, 40, 0.2], [20, 0, 0.2, 40], [-20, 0, 0.2, 40]]) {
@@ -628,6 +689,15 @@ export class World {
     this.box(-7.5, 0.8, 7.7, 5, 1.6, 0.6, m.wood, true, true); // landing mass
     // railing between hall A and stairwell (opening at stair top z[2,3])
     this.box(-4.95, 3.75, 5.5, 0.1, 1.1, 5, m.woodDark, false, true);
+    // handrails on the stair flights
+    const railA = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 5.9), m.woodDark);
+    railA.position.set(-9.88, 1.7, 5);
+    railA.rotation.x = -0.26;
+    this.group.add(railA);
+    const railB = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 5.9), m.woodDark);
+    railB.position.set(-7.42, 3.3, 5);
+    railB.rotation.x = 0.26;
+    this.group.add(railB);
 
     // ================= GROUND-FLOOR WALLS =================
     // front (south) wall
@@ -766,6 +836,21 @@ export class World {
       const h = yTop + 2.6;
       this.deco(x, yTop - h / 2, -5, 0.3, h, 3.8, m.concrete);
     }
+    // basement props: crates, jar shelf, hanging bulb
+    this.deco(12.4, -2.35, -3.2, 0.55, 0.55, 0.55, m.woodDark);
+    this.deco(13.1, -2.35, -3.4, 0.45, 0.45, 0.45, m.woodDark);
+    this.deco(12.4, -1.78, -3.2, 0.5, 0.15, 0.5, m.wood);
+    this.deco(12.2, -1.7, -7.2, 1.6, 0.08, 0.4, m.woodDark);
+    for (let j = 0; j < 4; j++) {
+      const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.2, 8), m.glass);
+      jar.position.set(11.6 + j * 0.4, -1.55, -7.2);
+      this.group.add(jar);
+    }
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
+    bulb.position.set(12.5, -0.9, -5);
+    this.group.add(bulb);
+    this.deco(12.5, -0.45, -5, 0.02, 0.9, 0.02, m.dark); // cord
     // steel door (in workshop east wall opening)
     const bp = new THREE.Group();
     bp.position.set(10, 0, -5.7);
@@ -796,9 +881,33 @@ export class World {
     this.box(-4.6, 0.32, -0.9, 0.24, 0.64, 0.8, m.sofa, false, true);
     this.box(-5.5, 0.19, 0.4, 1.1, 0.38, 0.6, m.wood, false, true);
     this.box(-1.95, 0.25, 5.2, 0.5, 0.5, 1.5, m.dark, false, true);
-    this.deco(-1.9, 1.05, 5.2, 0.1, 0.62, 1.15, m.tv);
+    // TV on a stand with an emissive screen facing the sofa
+    this.deco(-1.9, 0.35, 5.2, 0.5, 0.7, 1.3, m.woodDark);
+    this.deco(-1.9, 0.78, 5.2, 0.1, 0.08, 1.15, m.dark);
+    this.deco(-1.9, 1.05, 5.2, 0.08, 0.55, 1.0, m.dark);
+    const tvScreen = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.9, 0.5),
+      new THREE.MeshBasicMaterial({ color: 0x1a2840 })
+    );
+    tvScreen.position.set(-1.95, 1.05, 5.2);
+    tvScreen.rotation.y = -Math.PI / 2;
+    this.group.add(tvScreen);
     this.box(-9.4, 0.9, 0.3, 0.5, 1.8, 1.6, m.wood, true, true);
+    // shelves + books
+    const bookCols = [0xd94a4a, 0x4a7ad9, 0xd9c84a, 0x4ad97a, 0xa06a90];
+    for (const sy of [0.52, 1.02, 1.52]) {
+      this.deco(-9.4, sy, 0.3, 0.46, 0.05, 1.56, m.woodDark);
+      for (let b = 0; b < 5; b++) {
+        const bh = 0.26 + (b % 3) * 0.04;
+        this.deco(-9.4, sy + 0.025 + bh / 2, -0.32 + b * 0.31, 0.3, bh, 0.2,
+          new THREE.MeshLambertMaterial({ color: bookCols[(b + Math.floor(sy)) % 5] }));
+      }
+    }
     this.box(-4, 0.4, 6.6, 0.9, 0.8, 0.9, m.sofa, false, true); // armchair
+    // sofa cushions + a throw pillow
+    this.deco(-6.1, 0.47, -1.35, 0.9, 0.16, 0.72, m.sofa);
+    this.deco(-4.9, 0.47, -1.35, 0.9, 0.16, 0.72, m.sofa);
+    this.deco(-5.5, 0.68, -1.5, 0.34, 0.34, 0.34, new THREE.MeshLambertMaterial({ color: 0xa06a90 }));
     this.deco(-1.7, 0.9, 3, 0.05, 1.8, 0.05, m.metal);
     this.deco(-1.7, 1.6, 3, 0.35, 0.3, 0.35, m.car);
     // rug
@@ -818,7 +927,9 @@ export class World {
     this.box(5, 0.37, 4, 1.4, 0.75, 0.9, m.wood, false, true);
     this.box(4.1, 0.25, 4, 0.42, 0.5, 0.42, m.woodDark, false, true);
     this.box(5.9, 0.25, 4, 0.42, 0.5, 0.42, m.woodDark, false, true);
-    for (const cz of [3, 4.2, 5.4]) this.addItem('can', 9.3, 1.15, cz, true);
+    for (const cz of [3, 4.2, 5.4]) this.addItem('can', 9.3, 1.06, cz, true);
+    // upper kitchen cabinets (decorative)
+    this.deco(9.3, 1.82, 2.9, 1.1, 0.55, 4.4, m.wood);
 
     // Dining
     this.box(5.5, 0.37, 0, 2.2, 0.75, 1.0, m.wood, false, true);
@@ -826,7 +937,7 @@ export class World {
       this.box(cx, 0.23, cz, 0.4, 0.46, 0.4, m.woodDark, false, true);
     }
     this.box(3, 0.6, -1.5, 1.2, 1.2, 0.5, m.wood, true, true);
-    this.addItem('box', 5.5, 0.85, 0.2, true);
+    this.addItem('box', 5.5, 0.89, 0.2, true);
 
     // Bathroom
     this.box(5.3, 0.3, -7.2, 0.5, 0.6, 0.55, m.white, false, true);
@@ -834,6 +945,9 @@ export class World {
     this.box(5.3, 0.45, -3.4, 0.5, 0.9, 0.6, m.white, false, true);
     this.deco(5.7, 1.5, -3.4, 0.04, 0.7, 0.5, m.glass);
     this.box(2.4, 0.27, -6.6, 0.85, 0.55, 1.8, m.white, false, true);
+    // towel on the wall
+    this.deco(1.82, 1.35, -6.6, 0.06, 0.5, 0.36, m.blanketPink);
+    this.deco(1.82, 1.62, -6.6, 0.1, 0.08, 0.1, m.metal);
     this.box(2.2, 0.45, -2.6, 0.6, 0.9, 0.45, m.wood, false, true);
     this.makeContainer('cabinet', 'Bathroom cabinet', 2.2, 0.45, -2.6, 'lockpick', 'lockpick');
 
@@ -845,27 +959,43 @@ export class World {
 
     // Garage
     this.box(-6, 0.55, -5, 3.4, 0.55, 1.6, m.car, true, true);
-    this.deco(-6, 1.05, -4.9, 1.8, 0.5, 1.5, m.car);
+    this.deco(-6, 1.05, -5, 1.7, 0.42, 1.34, m.glass); // glass cabin
     for (const [wx2, wz2] of [[-7.6, -5.8], [-7.6, -4.2], [-4.4, -5.8], [-4.4, -4.2]]) {
       const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.25, 14), m.dark);
       wheel.rotation.z = Math.PI / 2;
       wheel.position.set(wx2, 0.32, wz2);
       this.group.add(wheel);
     }
+    // bumpers + head/tail lights
+    this.deco(-6, 0.45, -4.1, 3.2, 0.14, 0.16, m.metal);
+    this.deco(-6, 0.45, -5.9, 3.2, 0.14, 0.16, m.metal);
+    for (const z2 of [-5.4, -4.6]) {
+      this.deco(-4.28, 0.6, z2, 0.06, 0.14, 0.22, new THREE.MeshBasicMaterial({ color: 0xd9e8a0 }));
+      this.deco(-7.72, 0.6, z2, 0.06, 0.12, 0.2, new THREE.MeshBasicMaterial({ color: 0xd93a3a }));
+    }
     this.box(-9.55, 0.9, -3, 0.55, 1.8, 1.6, m.wood, true, true);
     this.makeContainer('shelf', 'Garage shelf', -9.4, 1.5, -3, 'crowbar', 'crowbar');
     this.box(-3, 0.3, -7.4, 0.7, 0.6, 0.7, m.woodDark, false, true);
-    this.addItem('box', -3, 0.68, -7.4, true);
+    this.addItem('box', -3, 0.75, -7.4, true);
 
     // Corridor (ground)
     this.deco(-1.25, 0.85, 7.4, 0.08, 1.7, 0.08, m.woodDark);
     this.deco(-1.25, 1.6, 7.55, 0.2, 0.2, 0.5, m.woodDark);
     this.box(1.1, 0.35, 7.3, 0.5, 0.7, 0.4, m.wood, false, true);
     this.deco(-1.38, 1.7, 2, 0.02, 0.6, 0.8, m.blanketBlue);
+    // runner carpet + framed paintings
+    const runner = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 12), m.carpet);
+    runner.rotation.x = -Math.PI / 2;
+    runner.position.set(0, 0.015, 0);
+    this.group.add(runner);
+    this.deco(-1.37, 1.7, -3, 0.02, 0.7, 0.55, new THREE.MeshLambertMaterial({ color: 0x6a8a5a }));
+    this.deco(-1.37, 1.7, -5.5, 0.02, 0.55, 0.7, new THREE.MeshLambertMaterial({ color: 0x8a6a4a }));
+    this.deco(1.37, 1.7, 4, 0.02, 0.65, 0.5, new THREE.MeshLambertMaterial({ color: 0x5a6a8a }));
 
     // Upstairs hall
     this.box(1.0, 3.55, 7.3, 0.5, 0.7, 0.4, m.wood, false, true);
     this.deco(-4.9, 4.9, 6, 0.02, 0.7, 0.9, m.blanketPink);
+    this.deco(-4.87, 4.6, 5, 0.02, 0.6, 0.8, new THREE.MeshLambertMaterial({ color: 0x7a5a8a }));
     // Corridor 2
     this.deco(1.2, 4.05, 1.4, 0.07, 1.7, 0.07, m.woodDark);
     this.deco(1.35, 5.3, 1.4, 0.25, 0.12, 0.4, m.woodDark);
@@ -874,6 +1004,7 @@ export class World {
     this.box(8.7, 3.4, 6.5, 2.0, 0.42, 1.05, m.wood, false, true);
     this.deco(8.7, 3.75, 6.5, 1.9, 0.22, 0.95, m.blanketPink);
     this.deco(8.7, 3.95, 6.95, 0.5, 0.12, 0.35, m.white);
+    this.deco(8.7, 3.85, 7.12, 2.1, 0.55, 0.12, m.woodDark); // headboard
     this.box(3.1, 3.5, 6.8, 1.2, 0.6, 0.7, m.wood, false, true);
     this.deco(3.1, 3.86, 6.8, 1.18, 0.13, 0.68, m.woodDark);
     this.makeContainer('chest', 'Toy chest', 3.1, 3.86, 6.8, 'key_blue', 'BLUE key');
@@ -887,9 +1018,10 @@ export class World {
     this.box(-7.5, 3.42, -6.3, 2.2, 0.45, 1.8, m.wood, false, true);
     this.deco(-7.5, 3.78, -6.3, 2.1, 0.24, 1.7, m.blanketBlue);
     this.deco(-8.3, 3.98, -6.3, 0.45, 0.12, 0.6, m.white);
+    this.deco(-7.5, 3.85, -7.3, 2.3, 0.6, 0.12, m.woodDark); // headboard
     this.box(-2.1, 4.3, -4, 0.6, 2.2, 1.4, m.wood, true, true);
     this.box(-9.5, 3.65, -2.6, 1.4, 0.9, 0.5, m.wood, false, true);
-    this.addItem('box', -9.5, 4.2, -2.6, true);
+    this.addItem('box', -9.5, 4.25, -2.6, true);
     this.box(-8.9, 3.55, -7.6, 0.45, 0.7, 0.45, m.wood, false, true);
     this.deco(-8.9, 4.1, -7.6, 0.3, 0.26, 0.3, m.car);
 
@@ -904,18 +1036,32 @@ export class World {
     this.group.add(globe);
     this.deco(3.5, 3.83, -7.2, 0.08, 0.34, 0.08, m.woodDark);
 
+    // contact shadows under the big furniture
+    this.blobShadow(-6, 0.02, -5, 2.0);        // car
+    this.blobShadow(-5.5, 0.02, -1.35, 1.3);  // sofa
+    this.blobShadow(-4, 0.02, 6.6, 0.7);      // armchair
+    this.blobShadow(5.5, 0.02, 0, 1.3);       // dining table
+    this.blobShadow(2.4, 0.02, 7.2, 0.8);     // fridge
+    this.blobShadow(8, 0.02, -7.3, 1.4);      // workbench
+    this.blobShadow(5.3, 0.02, -3.4, 0.6);    // toilet
+    this.blobShadow(2.4, 0.02, -6.6, 0.9);    // bathtub
+    this.blobShadow(-6, 3.22, -6.3, 1.4);     // master bed
+    this.blobShadow(8.7, 3.22, 6.5, 1.2);     // kids bed
+    this.blobShadow(8.8, 3.22, -6.5, 1.0);    // study desk
+    this.blobShadow(-9.4, 0.02, 0.3, 1.0);    // bookshelf
+
     // hidden container items
-    const fridgeItem = this.addItem('key_red', 2.4, 1.0, 6.6, false);
+    const fridgeItem = this.addItem('key_red', 2.4, 0.09, 6.6, false);
     fridgeItem.mesh.visible = false;
     const chestItem = this.items.find((i) => i.kind === 'key_blue'); // created by container? no:
     // (container items are created here)
-    const blueItem = this.addItem('key_blue', 3.1, 4.05, 6.8, false);
+    const blueItem = this.addItem('key_blue', 3.1, 4.0, 6.8, false);
     blueItem.mesh.visible = false;
-    const greenItem = this.addItem('key_green', 8.6, 4.35, -6.5, false);
+    const greenItem = this.addItem('key_green', 8.6, 4.02, -6.5, false);
     greenItem.mesh.visible = false;
-    const pickItem = this.addItem('lockpick', 2.2, 0.95, -2.6, false);
+    const pickItem = this.addItem('lockpick', 2.2, 0.93, -2.6, false);
     pickItem.mesh.visible = false;
-    const crowbarItem = this.addItem('crowbar', -9.3, 1.95, -3.1, false);
+    const crowbarItem = this.addItem('crowbar', -9.3, 1.86, -3.1, false);
     crowbarItem.mesh.visible = false;
 
     // ================= LIGHTS =================
@@ -924,19 +1070,25 @@ export class World {
     const moonL = new THREE.DirectionalLight(0x8a9ac4, 0.9);
     moonL.position.set(30, 40, -25);
     this.scene.add(moonL);
-    const pt = (x, y, z, dist = 10) => {
+    const pt = (x, y, z, dist = 10, ceil = 3.0) => {
       const l = new THREE.PointLight(0xffd9a0, 7, dist, 1.8);
       l.position.set(x, y, z);
       this.scene.add(l);
       this.deco(x, y + 0.18, z, 0.16, 0.1, 0.16, m.metal);
+      // cord up to the ceiling
+      if (ceil - y - 0.28 > 0.05) {
+        this.deco(x, (y + 0.28 + ceil) / 2, z, 0.02, ceil - y - 0.28, 0.02, m.dark);
+      }
     };
     pt(0, 2.7, 5.5); pt(0, 2.7, -2);
     pt(-6.5, 2.7, 4); pt(6, 2.7, 5); pt(6, 2.7, 0); pt(3.75, 2.7, -5);
     pt(8, 2.7, -5); pt(-5.5, 2.7, -5);
-    pt(-1.75, 5.9, 5); pt(0, 5.9, -3); pt(6, 5.9, 5); pt(-5.5, 5.9, -3); pt(6, 5.9, -4);
+    pt(-1.75, 5.9, 5, 10, 6.3); pt(0, 5.9, -3, 10, 6.3); pt(6, 5.9, 5, 10, 6.3);
+    pt(-5.5, 5.9, -3, 10, 6.3); pt(6, 5.9, -4, 10, 6.3);
     const redL = new THREE.PointLight(0xff3322, 5, 9, 1.6);
     redL.position.set(13.5, -1.2, -5);
     this.scene.add(redL);
+    this.basementLight = redL;
 
     // ================= NAV GRAPH =================
     this.node('gOut', 0, 0, 10.5, 'yard', []);
@@ -1001,6 +1153,11 @@ export class World {
   // ---------- per-frame ----------
   update(dt) {
     this.time += dt;
+    // flickering basement light
+    if (this.basementLight) {
+      this.basementLight.intensity = 5 + Math.sin(this.time * 6.3) * 0.7 +
+        (Math.random() < 0.015 ? -2.5 : 0);
+    }
     for (const d of this.doors) {
       const dir = Math.sign(d.target - d.t);
       if (dir !== 0) d.t = clamp(d.t + dir * dt * 2.2, 0, 1);
@@ -1013,7 +1170,7 @@ export class World {
     for (const it of this.items) {
       if (it.taken || !it.revealed) continue;
       it.mesh.rotation.y += dt * 1.2;
-      it.mesh.position.y = it.baseY + Math.sin(this.time * 2 + it.x) * 0.04;
+      it.mesh.position.y = it.baseY + Math.sin(this.time * 2 + it.x) * 0.012;
     }
     for (const trap of this.traps) {
       if (trap.snapT > 0) {
