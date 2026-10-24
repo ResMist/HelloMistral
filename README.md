@@ -83,6 +83,20 @@ Switchback stairs connect the floors; the kids' room has an outside ladder.
 - All audio is procedural WebAudio (oscillators + filtered noise).
 - Shadows are intentionally off and pixel ratio capped for smooth performance.
 
+## Testing
+
+The repo ships a **headless smoke test** that stubs the DOM and Three.js,
+boots the whole game and plays through the core loop — walking, opening
+doors, the doorbell lure, both stair flights, crouching, lockpicking the
+study, the chase (including the music switch), getting caught and retrying:
+
+```bash
+node test/smoke.js
+```
+
+No dependencies, Node 18+. It exits non-zero if any of the 25 checks fail —
+run it after any change to the game code.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

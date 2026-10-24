@@ -28,6 +28,11 @@ export class AudioSys {
     return this.muted;
   }
 
+  setChase(on) {
+    this.chase = on;
+    if (!on) this._beat = 0;
+  }
+
   tone(freq, dur, opts = {}) {
     if (!this.ctx || this.muted) return;
     const t = this.ctx.currentTime;

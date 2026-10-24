@@ -27,6 +27,8 @@ export class Player {
     this.projectiles = [];
     this.bobT = 0;     // head-bob phase
     this.bobAmt = 0;    // head-bob intensity
+    this.stuckT = 0;    // anti-stuck timer
+    this.lastX = 0; this.lastZ = 0;
   }
 
   get eyeY() { return this.pos.y + this.height * 0.94; }
@@ -114,6 +116,25 @@ export class Player {
       this.vy = 6.6;
     }
 
+    // anti-stuck: trying to move but going nowhere -> small hop over the lip
+    const wantMove = input.down('KeyW') || input.down('KeyA') ||
+      input.down('KeyS') || input.down('KeyD');
+    if (wantMove && this.trapT <= 0) {
+      if (Math.hypot(this.pos.x - this.lastX, this.pos.z - this.lastZ) < 0.02) {
+        this.stuckT += dt;
+        if (this.stuckT > 0.9 && this.pos.y <= ground + 0.02) {
+          this.vy = 4.6;
+          this.stuckT = 0;
+        }
+      } else {
+        this.stuckT = 0;
+      }
+    } else {
+      this.stuckT = 0;
+    }
+    this.lastX = this.pos.x;
+    this.lastZ = this.pos.z;
+
     // ---- bear traps ----
     for (const trap of world.traps) {
       if (!trap.armed) continue;
@@ -165,14 +186,14 @@ export class Player {
     const cam = new THREE.Vector3(this.pos.x, this.eyeY, this.pos.z);
     const dir = this.cameraDir();
     let best = null;
-    let bestScore = 0.62;
+    let bestScore = 0.56;
     const consider = (x, y, z, make) => {
       const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z;
       const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (d > 2.8) return;
       const dot = (dx * dir.x + dy * dir.y + dz * dir.z) / (d || 1);
       const score = dot - d * 0.06;
-      if (dot > 0.55 && score > bestScore) { bestScore = score; best = make(d); }
+      if (dot > 0.48 && score > bestScore) { bestScore = score; best = make(d); }
     };
     for (const it of world.items) {
       if (it.taken || !it.revealed) continue;
@@ -265,7 +286,10 @@ export class Player {
     }
     if (target.hold > 0) {
       if (input.down('KeyE')) {
-        if (!this.hold || this.hold.target !== target) {
+        // compare by kind + object, NOT identity: findTarget() builds a fresh
+        // target object every frame, so `!==` would reset hold progress forever
+        // and lockpicking / prying / disarming could never complete.
+        if (!this.hold || this.hold.target.kind !== target.kind || this.hold.target.obj !== target.obj) {
           this.hold = { target, t: 0, dur: target.hold, tick: 0 };
         }
         this.hold.t += dt;
