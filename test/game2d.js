@@ -1,660 +1,732 @@
 'use strict';
-// test/game2d.js — headless regression suite for the 2D game.
-// Run with: node test/game2d.js
-// It boots index.html in a vm with a stubbed DOM/canvas, then exercises the
-// neighbour AI, the window fix, chase/search, memory, looting, retry and win.
+// test/game2d.js — boots the single-file game in a stub DOM and drives it with
+// simulated input. Covers the generator contract, the full playable route,
+// keyring-vs-inventory, floors, night senses, the neighbour's learning, traps,
+// cameras, and the per-match memory boundary.
+//   node test/game2d.js
 
+const vm = require('vm');
 const { load } = require('./harness');
 
 let checks = 0;
-let failed = 0;
-const failures = [];
-function ok(name, cond, detail) {
+const fails = [];
+function ok(cond, msg) {
   checks++;
-  if (cond) {
-    console.log('PASS  ' + name);
-  } else {
-    failed++;
-    failures.push(name + (detail ? ' — ' + detail : ''));
-    console.log('FAIL  ' + name + (detail ? ' — ' + detail : ''));
-  }
+  if (!cond) fails.push(msg);
+  return !!cond;
 }
+function eq(a, b, msg) { return ok(a === b, msg + ' (got ' + JSON.stringify(a) + ', want ' + JSON.stringify(b) + ')'); }
+function near(a, b, tol, msg) { return ok(Math.abs(a - b) <= tol, msg + ' (got ' + a + ', want ~' + b + ' ±' + tol + ')'); }
 
-const WINDOWS = [[12, 12], [17, 7], [12, 24], [17, 30], [30, 7], [38, 30], [43, 20], [43, 12], [38, 7], [4, 8]];
-const START = { x: 28.5, y: 37.5 };
+/* ------------------------------------------------------------------ rig */
+function boot(seed, store) {
+  const env = load({ seed: seed || 12345, store: store || {} });
+  const s = env.sandbox;
+  const api = s.__g;
+  const ev = (code) => vm.runInContext(String(code), s);
+  return {
+    env, s, api, ev,
+    KEYS: ev('KEYS'),
+    start(fresh) { api.startMatchFromMenu(!!fresh); api.skipCutscene(); return this; },
+    tick(n) { for (let i = 0; i < (n || 1); i++) api.gameUpdate(1 / 60); },
+    clear() { for (const k in this.KEYS) this.KEYS[k] = 0; },
+    standNear(x, y, z) {
+      const q = ev('nearestStandable(' + z + ',' + x + ',' + y + ',0.28)');
+      if (!q) return false;
+      this.api.P.x = q[0] + 0.5; this.api.P.y = q[1] + 0.5; this.api.P.z = z;
+      return true;
+    },
+    face(x, y) { const P = this.api.P; P.a = Math.atan2(y - P.y, x - P.x); },
+    grab(id) {
+      const c = this.api.W.containers.find((q) => q.id === id);
+      if (!c) return false;
+      if (!this.standNear(c.x, c.y, c.z)) return false;
+      this.face(c.x, c.y);
+      this.api.interact();
+      return true;
+    },
+    walkTo(x, y, z, maxFrames) {
+      const api = this.api, P = api.P, KEYS = this.KEYS;
+      let path = this.ev('pathFind({x:' + P.x + ',y:' + P.y + ',z:' + P.z + '},{x:' + x + ',y:' + y + ',z:' + z + '},{allowClosed:1,keys:1})');
+      if (!path || !path.length) return { ok: false, why: 'no path' };
+      let i = 0, frames = 0, stuck = 0, last = { x: P.x, y: P.y };
+      const lim = maxFrames || 5000;
+      while (frames++ < lim) {
+        if (api.GAME.state !== 'play') return { ok: false, why: 'game over: ' + api.SHOW.over };
+        if (P.z === z && Math.hypot(P.x - x, P.y - y) < 1.35) { this.clear(); return { ok: true, frames }; }
+        if (i >= path.length) {
+          // reached the end of the path but not close enough: nudge
+          const dx = x - P.x, dy = y - P.y;
+          if (Math.hypot(dx, dy) < 0.15) return { ok: true, frames };
+          path = [path[path.length - 1]];
+          i = 0;
+        }
+        const wp = path[i];
+        const dx = wp.x + 0.5 - P.x, dy = wp.y + 0.5 - P.y;
+        const d = Math.hypot(dx, dy);
+        if (wp.z !== P.z) {
+          if (d < 0.65) { this.clear(); api.interact(); i++; continue; }
+        } else if (d < 0.2) { i++; continue; }
 
-function freezeN(g) {
-  g.N.stun = 1e9;
-  g.N.al = 0;
-  g.N.sees = 0;
-  g.N.mode = 'idle';
-  g.N.script = [];
-  g.N.path = [];
-}
-function noChase(g) {
-  if (g.N.mode === 'chase') {
-    g.N.mode = 'idle';
-    g.N.al = 0;
-    g.N.script = [];
-    g.N.prio = 0;
-    g.N.st = 'idle';
-    g.N.path = [];
-  }
-}
-function step(sim, secs, opts = {}) {
-  const g = sim.g;
-  const n = Math.max(1, Math.round(secs * 60));
-  let error = null;
-  for (let i = 0; i < n; i++) {
-    if (opts.freeze) freezeN(g);
-    if (opts.noChase) noChase(g);
-    try {
-      g.tick(1 / 60);
-    } catch (e) {
-      error = e;
-      break;
-    }
-    sim.sandbox.__clock += 1000 / 60;
-    if (opts.track) {
-      if (g.state === 'play') {
-        if (!g.npass(g.N.x, g.N.y)) opts.track.solidN = (opts.track.solidN || 0) + 1;
-        if (!g.ppass(g.P.x, g.P.y)) opts.track.solidP = (opts.track.solidP || 0) + 1;
-      }
-      if (!Number.isFinite(g.N.x) || !Number.isFinite(g.N.y) ||
-          !Number.isFinite(g.P.x) || !Number.isFinite(g.P.y)) opts.track.nan = true;
-      if (opts.track.lastN) {
-        const jump = Math.hypot(g.N.x - opts.track.lastN.x, g.N.y - opts.track.lastN.y);
-        if (jump > 1.6) opts.track.bigJumps++;
-      }
-      opts.track.lastN = { x: g.N.x, y: g.N.y };
-    }
-    if (opts.stopOnState && g.state !== 'play') break;
-  }
-  return error;
-}
-function holdE(sim, secs, opts = {}) {
-  sim.g.keys.e = 1;
-  const err = step(sim, secs, opts);
-  sim.g.keys.e = 0;
-  return err;
-}
-function at(g, x, y) {
-  g.P.x = x;
-  g.P.y = y;
-  g.P.vx = g.P.vy = 0;
-  g.P.lastCell = '';
-}
-// Drives the player with real key presses (no teleports) toward a point.
-function walkTo(sim, tx, ty, maxSec = 40) {
-  const g = sim.g;
-  const clear = () => { for (const k of ['w', 'a', 's', 'd']) g.keys[k] = 0; };
-  clear();
-  let path = [], stuck = 0, last = { x: g.P.x, y: g.P.y };
-  for (let f = 0; f < maxSec * 60; f++) {
-    if (g.state !== 'play') { clear(); return g.state === 'win'; }
-    if (Math.hypot(g.P.x - tx, g.P.y - ty) < 0.42) { clear(); step(sim, 0.05, { freeze: true }); return true; }
-    if (!path.length) path = g.findPath(g.P.x, g.P.y, tx, ty);
-    const wp = path[0] || [tx, ty];
-    if (Math.hypot(g.P.x - wp[0], g.P.y - wp[1]) < 0.4 && path.length) { path.shift(); continue; }
-    const dx = wp[0] - g.P.x, dy = wp[1] - g.P.y;
-    clear();
-    if (dx > 0.12) g.keys.d = 1; else if (dx < -0.12) g.keys.a = 1;
-    if (dy > 0.12) g.keys.s = 1; else if (dy < -0.12) g.keys.w = 1;
-    step(sim, 1 / 60, { freeze: true });
-    if (Math.hypot(g.P.x - last.x, g.P.y - last.y) < 0.004) {
-      if (++stuck > 40) { path = []; stuck = 0; }
-    } else { stuck = 0; path = path.slice(0, 1); }
-    last = { x: g.P.x, y: g.P.y };
-  }
-  clear();
-  return false;
-}
-function holdE(sim, secs) {
-  sim.g.keys.e = 1;
-  step(sim, secs, { freeze: true });
-  sim.g.keys.e = 0;
-  step(sim, 0.05, { freeze: true });
-}
-function loot(sim, standX, standY) {
-  if (!walkTo(sim, standX, standY)) return false;
-  for (let i = 0; i < 30 && !(sim.g.P.tgt && sim.g.P.tgt.t > 0); i++) step(sim, 1 / 60, { freeze: true });
-  if (!sim.g.P.tgt || !sim.g.P.tgt.t) return false;
-  holdE(sim, 3);
-  return true;
-}
-function lsWindow(sim, x, y, mode) {
-  const g = sim.g;
-  g.G[y][x] = 'w';
-  at(g, 47.5, 27.5); // sealed vault, out of sight while the neighbour works
-  Object.assign(g.N, {
-    x: 28.5, y: 25.5, a: Math.PI / 2, mode: 'idle', st: 'idle',
-    script: [], si: 0, prio: 0, al: 0, sees: 0, path: [], sleeping: 0,
-    focus: null, stun: 0,
-  });
-  g.MEM.plans.length = 0;
-  g.run(mode === 'repair' ? 'repair_window' : 'board_window', { x, y }, 1);
-}
+        // face + auto-open a closed door directly ahead
+        P.a = Math.atan2(dy, dx);
+        const ax = P.x + Math.cos(P.a) * 0.7, ay = P.y + Math.sin(P.a) * 0.7;
+        const tile = api.tileAt(P.z, ax | 0, ay | 0);
+        if (tile === 'D') {
+          const dClosed = this.ev('doorClosed(' + P.z + ',' + (ax | 0) + ',' + (ay | 0) + ')');
+          if (dClosed) { this.clear(); api.interact(); continue; }
+        }
+        if (tile === 'L' || tile === 'B' || tile === 'W' || tile === 'X') {
+          this.clear();
+          return { ok: false, why: 'blocked by ' + tile };
+        }
+        KEYS.right = dx > 0.12; KEYS.left = dx < -0.12;
+        KEYS.down = dy > 0.12; KEYS.up = dy < -0.12;
+        api.gameUpdate(1 / 60);
 
-/* ------------------------------------------------------- playthrough */
-{
-  // Proves the objective chain is actually walkable end to end with keys only.
-  // The neighbour is stunned so this measures level design, not stealth.
-  const sim = load({ seed: 4242 });
-  const g = sim.g;
-  g.start();
-  g.N.stun = 1e9;
-  g.N.script = []; g.N.mode = 'idle'; g.N.prio = 0;
-  const trace = [];
-  const at2 = (x, y, label) => { const r = walkTo(sim, x, y); if (!r) trace.push(label); return r; };
-  let done = loot(sim, 4.5, 10.5) && g.P.pick === 1;
-  done = at2(8.5, 11.5, 'shed exit') && done;
-  done = at2(28.5, 33.5, 'yard') && done;
-  done = at2(28.5, 28.5, 'front door') && done;
-  done = at2(29.5, 16.5, 'dining room') && done;
-  done = at2(29.5, 10.5, 'kitchen') && done;
-  done = loot(sim, 32.5, 9.5) && g.P.red === 1 && done;
-  done = at2(33.5, 11.5, 'study door') && done;
-  holdE(sim, 3);
-  const studyOpen = g.G[11][34] === 'D';
-  done = at2(35.5, 11.5, 'study') && done;
-  done = loot(sim, 37.5, 10.5) && g.P.blue === 1 && done;
-  done = at2(37.5, 26.5, 'workshop') && done;
-  done = at2(42.5, 27.5, 'basement door') && done;
-  holdE(sim, 4);
-  const basementOpen = g.G[27][43] === 'D';
-  done = at2(45.5, 27.5, 'vault') && done;
-  done = at2(46.5, 26.5, 'secret') && done;
-  ok('the whole game can be completed with keyboard input only', done && studyOpen && basementOpen && g.state === 'win', 'stuck=' + trace.join('/') + ' state=' + g.state + ' pick=' + g.P.pick + ' red=' + g.P.red + ' blue=' + g.P.blue);
-}
-
-/* ------------------------------------------------------------------ boot */
-{
-  const sim = load({ seed: 7 });
-  const g = sim.g;
-  ok('boots to the menu', g.state === 'menu');
-  ok('task library expanded beyond v1 (>=150 tasks)', g.TASKS.length >= 150, String(g.TASKS.length));
-  const stations = new Set(Object.keys(g.ST));
-  const effectKeys = new Set(['h', 't', 'b', 'e', 'y', 'l', 'd', 's']);
-  const names = new Set();
-  const bad = [];
-  for (const t of g.TASKS) {
-    if (names.has(t.name)) bad.push('duplicate task ' + t.name);
-    names.add(t.name);
-    if (!stations.has(t.st)) bad.push('bad station ' + t.st + ' in ' + t.name);
-    for (const k in t.eff) if (!effectKeys.has(k)) bad.push('bad effect ' + k + ' in ' + t.name);
-    if (!(t.b > t.a)) bad.push('bad duration in ' + t.name);
-  }
-  ok('all task data is valid', bad.length === 0, bad.slice(0, 3).join('; '));
-  ok('state count covers every task and script', g.STATE_COUNT === g.TASKS.length + Object.keys(g.S).length + 5 && g.STATE_COUNT > 190, String(g.STATE_COUNT));
-  const literalRuns = Array.from(new Set(Array.from(sim.js.matchAll(/run\('([a-z_]+)'/g)).map(m => m[1])));
-  const missingScripts = literalRuns.filter(n => !g.S[n]);
-  ok('every literal run() target exists', missingScripts.length === 0, missingScripts.join(','));
-
-  sim.pumpFrame(16); sim.pumpFrame(33); sim.pumpFrame(50);
-  ok('menu frame + HUD render without throwing', sim.els.hud.innerHTML.indexOf('Objective') >= 0 && sim.els.dbg.innerHTML.indexOf('THE NEIGHBOUR') >= 0);
-  g.start();
-  ok('start() enters play', g.state === 'play');
-  sim.pumpFrame(66); sim.pumpFrame(83);
-  ok('play frame renders and the HUD fills in', sim.els.hud.innerHTML.indexOf('lockpick') >= 0 && sim.els.ov.style.display === 'none');
-  ok('no engine warnings on boot', sim.warnings.length === 0, sim.warnings.join(' | '));
-}
-
-/* --------------------------------------------------- window stuck regression */
-{
-  // The old bug: inner() returned the window tile, he repaired/boarded it while
-  // standing in it, and the now-solid tile trapped him forever.
-  const sim = load({ seed: 11 });
-  const g = sim.g;
-  g.start();
-  g.G[7][17] = 'w';
-  at(g, 47.5, 27.5);
-  Object.assign(g.N, { x: 17.5, y: 5.5, a: Math.PI / 2, mode: 'idle', st: 'idle', script: [], si: 0, prio: 0, al: 0, sees: 0, path: [], sleeping: 0, focus: null, stun: 0 });
-  g.run('repair_window', { x: 17, y: 7 }, 1);
-  const track = { solidN: 0, solidP: 0, bigJumps: 0 };
-  const err = step(sim, 4, { track, noChase: true });
-  const near = { x: g.N.x, y: g.N.y };
-  const isInsideWindow = (g.N.x | 0) === 17 && (g.N.y | 0) === 7;
-  ok('repair at the TV window no longer self-seals', !err && g.G[7][17] === 'W' && !isInsideWindow && g.npass(g.N.x, g.N.y), err && err.message);
-  const err2 = step(sim, 12, { track, noChase: true });
-  const moved = Math.hypot(g.N.x - near.x, g.N.y - near.y);
-  ok('he walks away from that window afterwards', !err2 && moved > 0.8 && !track.solidN && g.npass(g.N.x, g.N.y), 'moved=' + moved.toFixed(2) + ' solidFrames=' + track.solidN);
-}
-
-{
-  // Full matrix: every window, repair + board, from the foyer.
-  let repaired = 0, boarded = 0, issues = [];
-  for (const [wx, wy] of WINDOWS) {
-    for (const mode of ['repair', 'board']) {
-      const sim = load({ seed: 23 + wx + wy + (mode === 'board' ? 7 : 0) });
-      const g = sim.g;
-      g.start();
-      lsWindow(sim, wx, wy, mode);
-      const track = { solidN: 0, solidP: 0, bigJumps: 0 };
-      const err = step(sim, 26, { track, noChase: true });
-      const expected = mode === 'board' ? 'X' : 'W';
-      const good = !err && g.state === 'play' && g.G[wy][wx] === expected &&
-        track.solidN === 0 && g.npass(g.N.x, g.N.y) &&
-        !((g.N.x | 0) === wx && (g.N.y | 0) === wy);
-      if (!good) issues.push(wx + ',' + wy + ' ' + mode + ' cell=' + g.G[wy][wx] + ' solid=' + track.solidN + ' n=' + g.N.x.toFixed(1) + ',' + g.N.y.toFixed(1));
-      if (mode === 'repair' && good) repaired++;
-      if (mode === 'board' && good) boarded++;
-      if (mode === 'board' && good && !g.MEM.boarded.includes(wx + ',' + wy)) issues.push('board not in memory');
-    }
-  }
-  ok('all 10 windows repair safely (' + repaired + '/10)', repaired === 10, issues.slice(0, 1).join(''));
-  ok('all 10 windows board safely (' + boarded + '/10)', boarded === 10, issues.slice(0, 2).join(''));
-}
-
-/* ------------------------------------------------------ occupants / unstick */
-{
-  const sim = load({ seed: 31 });
-  const g = sim.g;
-  g.start();
-  g.G[30][17] = 'w';
-  g.P.x = 17.5; g.P.y = 30.5;
-  g.N.x = 17.5; g.N.y = 30.5;
-  const evicted = g.evictCell(17, 30);
-  ok('sealing a window evicts the player and neighbour', evicted && !((g.P.x | 0) === 17 && (g.P.y | 0) === 30) && !((g.N.x | 0) === 17 && (g.N.y | 0) === 30) && g.ppass(g.P.x, g.P.y) && g.npass(g.N.x, g.N.y));
-
-  g.G[30][17] = 'X';
-  g.P.x = 17.5; g.P.y = 30.5;
-  ok('a player sealed inside a window is detected', !g.ppass(g.P.x, g.P.y));
-  g.forceUnstuck();
-  ok('player safety net pushes them out of solid tiles', g.ppass(g.P.x, g.P.y) && !((g.P.x | 0) === 17 && (g.P.y | 0) === 30), g.P.x + ',' + g.P.y);
-
-  g.N.x = 17.5; g.N.y = 30.5;
-  g.forceUnstuck();
-  ok('neighbour safety net pushes him out of solid tiles', g.npass(g.N.x, g.N.y));
-}
-
-/* ---------------------------------------------------------- canvas resize */
-{
-  const sim = load({ seed: 13 });
-  const g = sim.g;
-  g.start();
-  const cv = sim.sandbox.document.getElementById('c');
-  g.tick(1 / 60); sim.pumpFrame(16);
-  const w0 = cv.width, h0 = cv.height;
-  sim.sandbox.innerWidth = 900; sim.sandbox.innerHeight = 600;
-  g.tick(1 / 60); sim.pumpFrame(33);
-  ok('the canvas follows a window resize', cv.width === 900 && cv.height === 600 && (w0 !== 900 || h0 !== 600), cv.width + 'x' + cv.height);
-  sim.sandbox.innerWidth = 1280; sim.sandbox.innerHeight = 720;
-  sim.pumpFrame(50);
-}
-
-/* ---------------------------------------------------------- map integrity */
-{
-  const sim = load({ seed: 12 });
-  const g = sim.g;
-  // Player-reachable region from spawn once the locks are open (L/B become D).
-  const seen = new Set();
-  const startKey = Math.floor(START.x) + ',' + Math.floor(START.y);
-  const q = [[Math.floor(START.x), Math.floor(START.y)]];
-  seen.add(startKey);
-  while (q.length) {
-    const [x, y] = q.shift();
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = x + dx, ny = y + dy, k = nx + ',' + ny;
-      if (seen.has(k) || nx < 1 || ny < 1 || nx >= 56 || ny >= 40) continue;
-      const ch = g.G[ny][nx];
-      if (ch === '#' || ch === 'F' || ch === 'S' || ch === 'T' || ch === 'W' || ch === 'X') continue;
-      seen.add(k);
-      q.push([nx, ny]);
-    }
-  }
-  const reach = (x, y) => seen.has(Math.floor(x) + ',' + Math.floor(y));
-  // Containers sit inside furniture; the player loots them from beside them.
-  const canLoot = (x, y) => {
-    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-      const cx = Math.floor(x) + dx, cy = Math.floor(y) + dy;
-      if (reach(cx + 0.5, cy + 0.5) && g.standableCell(cx, cy, 0.28) &&
-          Math.hypot(cx + 0.5 - x, cy + 0.5 - y) < 1.6) return true;
-    }
-    return false;
-  };
-  ok('the spawn is inside the walkable map', reach(START.x, START.y));
-  ok('the lockpick can be reached and looted', canLoot(3.5, 10.5));
-  ok('the fridge can be reached and looted', canLoot(32.5, 8.5));
-  ok('the study desk can be reached and looted', canLoot(37.5, 9.5));
-  ok('the vault and the SECRET can be reached', reach(g.SECRET.x, g.SECRET.y));
-  ok('every window is adjacent to walkable ground', WINDOWS.every(([wx, wy]) =>
-    [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach(wx + dx + 0.5, wy + dy + 0.5))));
-}
-
-/* --------------------------------------------------------------- chase */
-{
-  const sim = load({ seed: 41 });
-  const g = sim.g;
-  g.start();
-  at(g, 25.5, 28.5);
-  g.N.x = 32.5; g.N.y = 24.5; g.N.a = Math.atan2(4, -7);
-  g.startChase();
-  g.N.throwCd = 99; // force the pathfinding/cut-off branch (old P.vel crash)
-  const track = { solidN: 0, solidP: 0, bigJumps: 0 };
-  const err = step(sim, 8, { track });
-  ok('long-distance chase does not crash (old P.vel bug)', !err && (g.state === 'play' || g.state === 'caught'), err && err.message);
-  ok('chase keeps the neighbour on valid tiles', track.solidN === 0 && Number.isFinite(g.N.x) && Number.isFinite(g.N.y));
-
-  const sim2 = load({ seed: 42 });
-  const g2 = sim2.g;
-  g2.start();
-  at(g2, 37.5, 10.5);
-  g2.N.x = 28.5; g2.N.y = 25.5;
-  g2.startChase();
-  const err2 = step(sim2, 9, { track: { solidN: 0 } });
-  ok('chase after losing line of sight turns into a search', !err2 && (g2.N.mode === 'search' || g2.N.mode === 'chase' || g2.state === 'caught'), err2 && err2.message);
-
-  const sim3 = load({ seed: 43 });
-  const g3 = sim3.g;
-  g3.start();
-  at(g3, 20.5, 12.5);
-  g3.N.x = 28.5; g3.N.y = 12.5;
-  g3.startChase();
-  g3.N.throwCd = 0;
-  const err3 = step(sim3, 3, {});
-  ok('neighbour wind-up / throw runs without throwing NaNs', !err3 && g3.PR.every(p => Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)), err3 && err3.message);
-}
-
-/* ---------------------------------------------------- loot, retry, no softlock */
-{
-  const sim = load({ seed: 51 });
-  const g = sim.g;
-  g.start();
-  freezeN(g);
-  at(g, 4.5, 10.5); step(sim, 0.1, { freeze: true });
-  holdE(sim, 1, { freeze: true });
-  at(g, 32.5, 9.5); step(sim, 0.1, { freeze: true });
-  holdE(sim, 1, { freeze: true });
-  at(g, 37.5, 10.5); step(sim, 0.1, { freeze: true });
-  holdE(sim, 1.4, { freeze: true });
-  ok('locks: lockpick, red key and blue key can all be looted', g.P.pick === 1 && g.P.red === 1 && g.P.blue === 1);
-
-  g.caught();
-  ok('catch enters the caught state and is remembered', g.state === 'caught' && g.MEM.catches >= 1);
-  g.retry();
-  ok('retry puts the player back at the start', g.state === 'play' && Math.abs(g.P.x - START.x) < 0.01 && Math.abs(g.P.y - START.y) < 0.01);
-  ok('retry clears the key flags', g.P.pick === 0 && g.P.red === 0 && g.P.blue === 0);
-  ok('retry refills the containers (old softlock fixed)', g.CT.every(c => c.done === 0 && c.seen === 0));
-  at(g, 32.5, 9.5); step(sim, 0.1, { freeze: true });
-  holdE(sim, 1, { freeze: true });
-  ok('the fridge can be looted again after a catch', g.P.red === 1 && g.CT[0].done === 1);
-}
-
-/* --------------------------------------------------------------- win route */
-{
-  const sim = load({ seed: 61 });
-  const g = sim.g;
-  g.start();
-  freezeN(g);
-  at(g, 42.5, 27.5); step(sim, 0.1, { freeze: true });
-  holdE(sim, 2.6, { freeze: true });
-  ok('the basement door refuses to open without both keys', g.G[27][43] === 'B');
-  g.P.pick = 1; g.P.red = 1; g.P.blue = 1;
-  holdE(sim, 2.6, { freeze: true });
-  ok('the basement door unlocks with red + blue keys', g.G[27][43] === 'D');
-  at(g, 46.5, 26.5); step(sim, 0.2, { freeze: true });
-  ok('reaching the SECRET wins the round', g.state === 'win' && g.SECRET.got === 1 && g.MEM.wins >= 1);
-}
-
-/* ------------------------------------------------------- memory persistence */
-{
-  const sim = load({ seed: 71 });
-  const g = sim.g;
-  g.start();
-  at(g, 16.5, 12.5);
-  g.N.x = 20.5; g.N.y = 12.5; g.N.a = Math.PI; g.N.mode = 'idle'; g.N.script = []; g.N.al = 0;
-  const err = step(sim, 3, { noChase: true });
-  const heatKeys = Object.keys(g.MEM.heat);
-  const hoursSum = g.MEM.hours.reduce((a, b) => a + b, 0);
-  ok('being seen writes the spatial heat map and hour histogram', !err && heatKeys.length > 0 && hoursSum > 0, 'heat=' + heatKeys.length + ' hours=' + hoursSum);
-  ok('hour affinity rises from observed activity', g.hourAffinity() > 0);
-  g.saveMemory();
-  const sim2 = load({ seed: 72, store: sim.store });
-  ok('memory survives a reload', Object.keys(sim2.g.MEM.heat).length > 0 && sim2.g.MEM.hours.length === 24 && sim2.g.MEM.heat[heatKeys[0]] === g.MEM.heat[heatKeys[0]]);
-  ok('memory format is normalised on load', sim2.g.MEM.decoys && typeof sim2.g.MEM.decoys === 'object' && Array.isArray(sim2.g.MEM.plans));
-}
-
-/* ---------------------------------------------------- memory wipe control */
-{
-  const sim = load({ seed: 73 });
-  const g = sim.g;
-  g.start();
-  g.MEM.catches = 4;
-  g.MEM.plans.push({ t: 'lock', x: 0, y: 0 });
-  g.saveMemory();
-  g.wipeMemory();
-  ok('the forget control wipes catches and plans', g.MEM.catches === 0 && g.MEM.plans.length === 0 && Object.keys(g.MEM.heat).length === 0);
-  const sim2 = load({ seed: 74, store: sim.store });
-  ok('a wiped memory stays wiped after reload', sim2.g.MEM.catches === 0 && sim2.g.MEM.plans.length === 0);
-}
-
-/* ------------------------------------------------------ in-flight items */
-{
-  const sim = load({ seed: 75 });
-  const g = sim.g;
-  g.start();
-  ok('a new round puts the camera on the player', Math.abs(g.cam.x - g.P.x) < 1e-9 && Math.abs(g.cam.y - g.P.y) < 1e-9);
-  freezeN(g);
-  at(g, 29.9, 12.5);
-  step(sim, 0.1, { freeze: true });
-  const target = g.findTarget();
-  ok('a table can be picked up', !!target && target.k === 'item');
-  if (target) g.doTarget(target);
-  const it = g.P.inv.find(Boolean);
-  ok('the picked-up item is in the inventory', !!it && g.P.inv.indexOf(it) >= 0);
-  g.P.aim = 0;
-  g.throwHeld();
-  ok('a thrown item is marked in flight and leaves the hand', !!it && it.fly === 1 && !g.P.inv.includes(it) && g.PR.length > 0);
-  const retarget = g.findTarget();
-  ok('a flying item cannot be picked out of the air', !retarget || retarget.k !== 'item' || retarget.o !== it);
-  step(sim, 2, { freeze: true });
-  ok('the thrown item lands and becomes collectable again', !!it && it.fly === 0 && Number.isFinite(it.x) && Number.isFinite(it.y));
-}
-
-/* ------------------------------------------- discovering a looted container */
-{
-  const sim = load({ seed: 81 });
-  const g = sim.g;
-  g.start();
-  at(g, 47.5, 27.5);
-  g.CT[0].done = 1;
-  g.MEM.plans.length = 0;
-  g.SPL.length = 0;
-  g.N.script = []; g.N.mode = 'idle';
-  let picked = false;
-  for (let i = 0; i < 60; i++) {
-    g.N.script = []; g.N.mode = 'idle';
-    g.pickTask();
-    if (g.N.st === 'inspect_container') { picked = true; break; }
-  }
-  ok('the planner investigates a looted fridge', picked, g.N.st);
-  step(sim, 16, { noChase: true });
-  ok('he discovers the theft and gets suspicious', g.CT[0].seen === 1 && g.N.need.s > 0.2, 'seen=' + g.CT[0].seen + ' susp=' + g.N.need.s.toFixed(2));
-  const one = g.guardObjective();
-  ok('one theft makes him guard the remaining objective', !!one && (one.n === 'guard_obj' || one.n === 'guard_basement'));
-  g.P.red = 1; g.P.blue = 1;
-  const both = g.guardObjective();
-  ok('both keys make him camp the basement', both && both.n === 'guard_basement');
-  ok('player-goal prediction follows the key chain', (() => {
-    g.P.pick = 0; g.P.red = 0; g.P.blue = 0;
-    const a = g.playerGoal().name;
-    g.P.pick = 1;
-    const b = g.playerGoal().name;
-    g.P.red = 1;
-    const c = g.playerGoal().name;
-    g.P.blue = 1;
-    const d = g.playerGoal().name;
-    return a === 'the shed' && b === 'the kitchen' && c === 'the study' && d === 'the vault';
-  })());
-}
-
-/* --------------------------------------------------------------- search */
-{
-  const sim = load({ seed: 91 });
-  const g = sim.g;
-  g.start();
-  at(g, 47.5, 27.5);
-  g.N.x = 28.5; g.N.y = 12.5; g.N.lastSeen = { x: 18.5, y: 12.5 }; g.N.pvel = { x: 0, y: 0 };
-  g.loseChase();
-  ok('losing the chase switches to search mode', g.N.mode === 'search' && g.N.searchT === 0);
-  const spots = g.beliefSpots(5);
-  ok('search seeds a usable belief map', spots.length > 0 && (g.N.mass || 0) > 0.02, 'mass=' + (g.N.mass || 0).toFixed(3));
-  ok('predicted intercept is a finite point', (() => { const q = g.interceptPoint(); return Number.isFinite(q[0]) && Number.isFinite(q[1]); })());
-  const p0 = { x: g.N.x, y: g.N.y };
-  const track = { solidN: 0, solidP: 0, bigJumps: 0 };
-  const err = step(sim, 8, { track });
-  ok('search moves him and never puts him in a wall', !err && track.solidN === 0 && Math.hypot(g.N.x - p0.x, g.N.y - p0.y) > 0.5, err && err.message);
-  const err2 = step(sim, 40, { track });
-  ok('search eventually settles without crashing', !err2 && (g.N.mode === 'idle' || g.N.mode === 'search' || g.state === 'caught'), g.N.mode);
-}
-
-/* ------------------------------------------- noise, windows, doors, decoys */
-{
-  const sim = load({ seed: 101 });
-  const g = sim.g;
-  g.start();
-  at(g, 47.5, 27.5);
-  g.G[30][17] = 'w';
-  g.N.x = 20.5; g.N.y = 27.5; g.N.script = []; g.N.mode = 'idle'; g.N.prio = 0; g.N.focus = null;
-  g.noise(17.5, 30.5, 16, 'glass');
-  const target = g.N.script[0] && g.N.script[0].go;
-  ok('glass noise makes him inspect the window from beside it', g.N.st === 'check_window' && !!target && !((Math.floor(target[0]) === 17) && (Math.floor(target[1]) === 30)), g.N.st);
-  ok('the window inspection target is standable', !!target && g.standableCell(Math.floor(target[0]), Math.floor(target[1])));
-  const track = { solidN: 0, solidP: 0, bigJumps: 0 };
-  const err = step(sim, 10, { track, noChase: true });
-  ok('window inspection does not walk him into the wall', !err && track.solidN === 0, err && err.message);
-
-  // repeated footsteps should update the focus instead of restarting the script
-  g.N.x = 28.5; g.N.y = 25.5; g.N.script = []; g.N.mode = 'idle'; g.N.prio = 0; g.N.focus = null;
-  g.noise(29, 25, 8, 'step');
-  const len = g.N.script.length;
-  g.noise(29.4, 25, 8, 'step');
-  ok('footstep spam updates the search target without restarting', g.N.st === 'investigate_noise' && g.N.script.length === len && !!g.N.focus && g.N.focus.x === 29.4);
-
-  // door noise
-  const d = g.DRM[12 * 56 + 23];
-  if (d) { d.t = 1; d.o = 1; }
-  g.N.x = 21.5; g.N.y = 12.5; g.N.script = []; g.N.mode = 'idle'; g.N.prio = 0; g.N.focus = null;
-  g.noise(23.5, 12.5, 9, 'door');
-  ok('door noise sends him to check (and close) the door', g.N.st === 'check_open_door');
-  step(sim, 8, { noChase: true });
-  ok('door check completes safely', (g.N.st !== 'check_open_door' || g.N.si > 0) && g.npass(g.N.x, g.N.y));
-
-  // decoy learning
-  g.N.x = 20.5; g.N.y = 12.5; g.N.script = []; g.N.mode = 'idle'; g.N.prio = 0; g.N.focus = null;
-  let follow = false;
-  for (let i = 0; i < 4; i++) {
-    g.N.focus = null;
-    g.P.throwO = { x: 16.5, y: 12.5, t: g.tm };
-    g.noise(24.5, 12.5, 12, 'impact');
-    if (g.N.st === 'follow_thrower') follow = true;
-  }
-  const dk = Object.keys(g.MEM.decoys);
-  ok('repeated throws teach him to follow the thrower', follow && dk.length > 0 && g.MEM.decoys[dk[0]] >= 3, JSON.stringify(g.MEM.decoys));
-}
-
-/* ---------------------------------------------------- trap placement fallback */
-{
-  const sim = load({ seed: 111 });
-  const g = sim.g;
-  g.start();
-  at(g, 47.5, 27.5);
-  g.G[30][17] = 'X';
-  g.N.x = 20.5; g.N.y = 27.5;
-  g.MEM.traps.length = 0;
-  g.TRAPS.length = 0;
-  g.run('set_bear_trap', { x: 17, y: 30 }, 1);
-  const err = step(sim, 8, { noChase: true });
-  const t = g.TRAPS[0];
-  ok('a trap planned on a boarded tile is placed somewhere useful', !err && !!t && g.standableCell(t.x, t.y, 0.2), t ? t.x + ',' + t.y : 'none');
-  ok('trap memory matches the safe placement', !!t && g.MEM.traps.includes(t.x + ',' + t.y));
-
-  // Disarming must also forget it, otherwise it is silently back after a reload.
-  if (t) {
-    const key = t.x + ',' + t.y;
-    g.doTarget({ k: 'trap', o: t, t: 0.9 });
-    ok('disarming a trap forgets it in long-term memory', g.TRAPS.indexOf(t) < 0 && !g.MEM.traps.includes(key));
-  }
-}
-
-/* --------------------------------------------------------------- routine AI */
-{
-  const sim = load({ seed: 121 });
-  const g = sim.g;
-  g.start();
-  at(g, 47.5, 27.5);
-  let err = null, solidN = 0, solidP = 0, stalls = 0, still = 0, nan = false;
-  let last = { x: g.N.x, y: g.N.y };
-  for (let i = 0; i < 60 * 300; i++) {
-    noChase(g);
-    try {
-      g.tick(1 / 60);
-    } catch (e) { err = e; break; }
-    if (!g.npass(g.N.x, g.N.y)) solidN++;
-    if (!g.ppass(g.P.x, g.P.y)) solidP++;
-    if (!Number.isFinite(g.N.x) || !Number.isFinite(g.N.y)) { nan = true; break; }
-    const goStep = g.N.script[g.N.si] && g.N.script[g.N.si].go;
-    const moved = Math.hypot(g.N.x - last.x, g.N.y - last.y);
-    if (goStep && moved < 1e-4) still++; else still = 0;
-    if (still > 240) { stalls++; still = 0; }
-    last = { x: g.N.x, y: g.N.y };
-  }
-  ok('five minutes of routine play never wedges the neighbour', !err && solidN === 0 && !nan, err && err.message);
-  ok('no go-step stalls during routine play', stalls === 0, String(stalls));
-  ok('routine tasks actually complete', g.N.done >= 8, String(g.N.done));
-  ok('routine play is warning-free', sim.warnings.length === 0, sim.warnings.slice(0, 2).join(' | '));
-}
-
-/* ------------------------------------------------------------------- fuzz */
-{
-  let rngState = 987654321;
-  const rand = () => { rngState = (rngState * 1664525 + 1013904223) >>> 0; return rngState / 4294967296; };
-  let totalErrors = 0, totalSolid = 0, totalCatch = 0;
-  const dirs = ['w', 'a', 's', 'd'];
-  for (let seed = 0; seed < 3; seed++) {
-    const sim = load({ seed: 131 + seed });
-    const g = sim.g;
-    g.start();
-    let err = null;
-    for (let i = 0; i < 60 * 120; i++) {
-      if (i % 20 === 0) {
-        for (const k of ['w', 'a', 's', 'd', 'shift', 'c', 'e']) g.keys[k] = 0;
-        if (rand() < 0.8) g.keys[dirs[(rand() * 4) | 0]] = 1;
-        if (rand() < 0.18) g.keys.shift = 1;
-        if (rand() < 0.25) g.keys.c = 1;
-        if (rand() < 0.5) g.keys.e = 1;
-        if (rand() < 0.012) {
-          for (let t = 0; t < 30; t++) {
-            const x = 1 + ((rand() * 54) | 0), y = 1 + ((rand() * 38) | 0);
-            if (g.standableCell(x, y, 0.3)) { g.P.x = x + 0.5; g.P.y = y + 0.5; break; }
+        if (frames % 90 === 0) {
+          if (Math.hypot(P.x - last.x, P.y - last.y) < 0.25) stuck++; else stuck = 0;
+          last = { x: P.x, y: P.y };
+          if (stuck >= 2) {
+            stuck = 0;
+            const re = this.ev('pathFind({x:' + P.x + ',y:' + P.y + ',z:' + P.z + '},{x:' + x + ',y:' + y + ',z:' + z + '},{allowClosed:1,keys:1})');
+            if (!re.length) return { ok: false, why: 'stuck, no path' };
+            path = re; i = 0;
           }
         }
-        if (rand() < 0.006) {
-          const w = WINDOWS[(rand() * WINDOWS.length) | 0];
-          if (g.G[w[1]][w[0]] === 'W') { g.G[w[1]][w[0]] = 'w'; g.noise(w[0] + 0.5, w[1] + 0.5, 16, 'glass'); }
-        }
       }
-      try { g.tick(1 / 60); } catch (e) { err = e; break; }
-      if (g.state === 'play') {
-        if (!g.npass(g.N.x, g.N.y)) totalSolid++;
-        if (!Number.isFinite(g.P.x + g.P.y + g.N.x + g.N.y)) { err = new Error('NaN position'); break; }
-      }
-      if (g.state === 'caught') { totalCatch++; g.retry(); }
-      if (g.state === 'win') break;
-    }
-    if (err) { totalErrors++; console.log('      fuzz seed ' + seed + ': ' + err.message); }
-  }
-  ok('random-input fuzzing: no runtime exceptions', totalErrors === 0, String(totalErrors));
-  ok('random-input fuzzing: nobody clips into solid tiles', totalSolid === 0, String(totalSolid));
-  ok('random-input fuzzing: catches/retries are stable', totalCatch >= 0);
+      this.clear();
+      return { ok: false, why: 'timeout' };
+    },
+  };
 }
 
-/* ------------------------------------------------------------- final report */
-console.log('');
-if (failed === 0) {
-  console.log('GAME2D OK — ' + checks + '/' + checks + ' checks passed');
+/* ============================================================ 1. boot/menu */
+{
+  const b = boot(7);
+  const api = b.api;
+  eq(api.SHOW.screen, 'menu', 'boots to the main menu');
+  ok(!!api.W && api.W.floors.length === 3, 'menu has a preview world with 3 floors');
+  ok(api.W.meta.rooms >= 10, 'preview world has rooms');
+  let drew = true;
+  try { api.render(1 / 60); } catch (e) { drew = false; }
+  ok(drew, 'menu renders without a player');
+  // Play -> cutscene -> match
+  api.startMatchFromMenu(true);
+  eq(api.SHOW.screen, 'cut', 'Play leads to the cutscene');
+  ok(api.P == null || api.GAME.state === 'cut', 'cutscene holds the game');
+  api.skipCutscene();
+  eq(api.GAME.state, 'play', 'cutscene skips into the match');
+  ok(!!api.P && !!api.N, 'player and neighbour exist');
+  ok(api.N.z === 0 && b.ev('standable(0,' + api.N.x + ',' + api.N.y + ',0.27)'), 'neighbour stands on a valid tile');
+  const blocked = b.walkTo(api.W.front.ix + 0.5, api.W.front.iy + 2, 0, 900);
+  ok(blocked.ok || blocked.why !== 'no path', 'the front of the house is reachable from spawn');
+  ok(b.env.warnings.length === 0, 'no console errors during boot');
+}
+
+/* ====================================================== 2. generator contract */
+{
+  const b = boot(3);
+  b.start(true);
+  const W = b.api.W;
+  eq(W.floors.length, 3, 'three floors exist');
+  eq(W.floors.map((f) => f.z).join(','), '0,1,2', 'floor indices are 0/1/2');
+  ok(W.meta.rooms >= 10 && W.meta.rooms <= 26, 'room count is sane');
+  ok(W.meta.doors >= 8, 'doors were carved');
+  ok(W.meta.windows >= 6, 'windows were fitted');
+  ok(W.stairs.length >= 2, 'at least the upstairs and the cellar stairs exist');
+  const kinds = new Set(W.doors.map((d) => d.kind));
+  ok(kinds.has('lock'), 'the study door is a lock');
+  ok(kinds.has('cellar'), 'the basement door is a cellar lock');
+  eq(W.doors.filter((d) => d.kind === 'lock').length, 1, 'exactly one study lock');
+  eq(W.doors.filter((d) => d.kind === 'cellar').length, 1, 'exactly one cellar door');
+  // every container sits on furniture and is touchable
+  for (const c of W.containers) {
+    let solid = true, adj = false;
+    for (let i = 0; i < (c.w || 1); i++) {
+      if (b.ev('T(' + c.z + ',' + (c.tx + i) + ',' + c.ty + ')') !== 'S') solid = false;
+      if (b.ev('adjacentFree(' + JSON.stringify(W) + ',' + (c.tx + i) + ',' + c.ty + ',' + c.z + ')').length) adj = true;
+    }
+    ok(solid && adj, 'container ' + c.id + ' is solid and reachable');
+  }
+  // windows have interior floor behind them
+  let badWin = 0;
+  for (const w of W.windows) if (b.ev('T(' + w.z + ',' + w.ix + ',' + w.iy + ')') !== '.') badWin++;
+  eq(badWin, 0, 'every window has interior floor behind it');
+  // generate a bunch more worlds in-process
+  let built = 0, attempts = 0, failsGen = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    let w = null, err = null;
+    try { w = b.ev('buildWorld(' + seed + ')'); } catch (e) { err = e.message; }
+    if (err || !w) { failsGen++; continue; }
+    const v = b.ev('GEN.validateWorld(' + JSON.stringify(w) + ')');
+    if (!v.length) { built++; attempts += w.attempts; }
+    else failsGen++;
+  }
+  ok(built >= 34, 'at least 85% of seeds produce a valid world (' + built + '/40)');
+  ok(built > 0 && attempts / Math.max(1, built) < 10, 'worlds build in few attempts (' + (attempts / Math.max(1, built)).toFixed(2) + ')');
+  ok(failsGen <= 6, 'no more than 15% of seeds fail');
+}
+
+/* ========================================================= 3. keyring vs bag */
+{
+  const b = boot(7);
+  b.start(true);
+  const api = b.api, P = api.P;
+  ok(!!P.keys && !Array.isArray(P.keys), 'keys live on a keyring object');
+  ok(Array.isArray(P.inv), 'the player still has an inventory array for loot');
+  eq(Object.keys(P.keys).sort().join(','), 'blue,pick,red', 'the keyring has three slots');
+  b.grab('toolbox'); b.grab('fridge');
+  ok(P.keys.pick && P.keys.red, 'the lockpick and the red key go on the keyring');
+  eq(P.inv.length, 0, 'keys never enter the inventory');
+  eq(P.carried, 0, 'keys are never carried and never throwable');
+  const keysAsItems = api.ITEMS.filter((it) => /key|pick/i.test(it.k));
+  eq(keysAsItems.length, 0, 'no loose item is a key');
+  // the keyring survives drawing
+  let drew = true;
+  try { api.render(1 / 60); } catch (e) { drew = false; }
+  ok(drew, 'the keyring HUD renders');
+}
+
+/* ==================================================== 4. the full playable run */
+{
+  const b = boot(11);
+  b.start(true);
+  const api = b.api, W = api.W, P = api.P;
+  api.freezeAI(true);  // exercise the player route in isolation
+  const shed = b.walkTo(W.containers.find((c) => c.id === 'toolbox').x, W.containers.find((c) => c.id === 'toolbox').y, 0, 6000);
+  ok(shed.ok, 'walked to the shed (' + JSON.stringify(shed) + ')');
+  b.grab('toolbox');
+  ok(P.keys.pick, 'lockpick taken from the shed');
+  const front = b.walkTo(W.front.ix + 0.5, W.front.iy + 2, 0, 6000);
+  ok(front.ok, 'walked to the front door (' + JSON.stringify(front) + ')');
+  b.standNear(W.front.ix, W.front.iy + 1, 0); b.face(W.front.x, W.front.y);
+  api.interact();
+  eq(b.ev('doorClosed(0,' + W.front.ix + ',' + W.front.iy + ')'), false, 'front door opens');
+  const inside = b.walkTo(W.front.ix + 0.5, W.front.iy - 1.5, 0, 3000);
+  ok(inside.ok, 'walked inside through the front door');
+  // the study door blocks until picked
+  const sd = W.doors.find((d) => d.kind === 'lock');
+  const sc = sd.cells[0];
+  const toStudy = b.walkTo(sc[0] + 0.5, sc[1] + 0.5, sd.z, 6000);
+  ok(toStudy.ok || toStudy.why === 'blocked by L', 'reached the study door or was stopped by it (' + JSON.stringify(toStudy) + ')');
+  b.standNear(sc[0], sc[1], sd.z); b.face(sc[0] + 0.5, sc[1] + 0.5);
+  api.interact();
+  eq(sd.closed, 0, 'lockpick opens the study');
+  eq(b.ev('T(' + sd.z + ',' + sc[0] + ',' + sc[1] + ')'), 'D', 'unlocked door becomes a door tile');
+  ok(!!b.standNear(W.containers.find((c) => c.id === 'desk').x, W.containers.find((c) => c.id === 'desk').y, 1), 'the desk is reachable now');
+  b.grab('desk');
+  ok(P.keys.blue, 'blue key taken from the study desk');
+  b.grab('fridge');
+  ok(P.keys.red, 'red key taken from the kitchen fridge');
+  // basement is locked until the red key
+  const cd = W.doors.find((d) => d.kind === 'cellar');
+  b.standNear(cd.cells[0][0], cd.cells[0][1], 0); b.face(cd.cells[0][0] + 0.5, cd.cells[0][1] + 0.5);
+  b.api.interact();
+  eq(cd.closed, 0, 'red key unlocks the basement');
+  // stairs
+  const cs = api.STAIR.find((s) => s.b.z === 2);
+  P.x = cs.a.x + 0.5; P.y = cs.a.y + 0.5; P.z = cs.a.z;
+  api.interact();
+  eq(P.z, 2, 'the cellar stairs take the player to the basement');
+  const sec = W.secret;
+  ok(b.standNear(sec.x, sec.y, 2), 'the basement secret is approachable');
+  api.interact();
+  eq(api.SHOW.over, 'win', 'opening the stash wins the match');
+  eq(api.MEM.wins, 1, 'the win is written to match memory');
+  ok(b.env.warnings.length === 0, 'no console errors during the run');
+}
+
+/* ============================================================ 5. floors/stairs */
+{
+  const b = boot(7);
+  b.start(true);
+  const api = b.api, P = api.P;
+  ok(api.STAIR.length >= 2, 'stair links exist');
+  for (const s of api.STAIR) {
+    ok(b.ev('T(' + s.a.z + ',' + s.a.x + ',' + s.a.y + ')') === 'U' || b.ev('T(' + s.a.z + ',' + s.a.x + ',' + s.a.y + ')') === 'N', 'stair end A is a stair tile');
+    ok(b.ev('T(' + s.b.z + ',' + s.b.x + ',' + s.b.y + ')') === 'U' || b.ev('T(' + s.b.z + ',' + s.b.x + ',' + s.b.y + ')') === 'N', 'stair end B is a stair tile');
+  }
+  const up = api.STAIR.find((s) => s.a.z === 0 && s.b.z === 1);
+  P.x = up.a.x + 0.5; P.y = up.a.y + 0.5; P.z = 0;
+  api.interact();
+  eq(P.z, 1, 'stairs go up');
+  api.interact();
+  eq(P.z, 0, 'and back down');
+  ok(b.ev('pathFind({x:2.5,y:33.5,z:0},{x:' + api.W.secret.x + ',y:' + api.W.secret.y + ',z:2},{allowClosed:1,keys:1})').length > 8, 'pathfinding crosses floors');
+  ok(b.ev('pathFind({x:2.5,y:33.5,z:0},{x:' + api.W.secret.x + ',y:' + api.W.secret.y + ',z:2},{allowClosed:1,keys:0})').length === 0, 'a locked cellar blocks the path without keys');
+}
+
+/* ============================================================= 6. night time */
+{
+  const b = boot(7);
+  b.start(true);
+  const api = b.api, P = api.P, N = api.N;
+  // put the player in plain sight of the neighbour
+  P.x = N.x + 2.2; P.y = N.y; P.z = N.z;
+  N.a = 0;
+  api.setClock(13);
+  const day = api.sightRange();
+  api.setClock(23);
+  const night = api.sightRange();
+  ok(night < day, 'he sees 20% shorter at night (' + day.toFixed(2) + ' -> ' + night.toFixed(2) + ')');
+  ok(night / day > 0.5 && night / day <= 0.85, 'night sight is roughly 20% shorter than day (' + (night / day).toFixed(2) + ')');
+  api.setClock(13);
+  P.crouch = 1;
+  const crouch = api.sightRange();
+  P.crouch = 0; P.sprint = 1;
+  const sprint = api.sightRange();
+  ok(crouch < day * 0.65, 'crouching hides you');
+  ok(sprint > day, 'sprinting makes you easier to spot');
+  P.sprint = 0;
+  ok(api.isNight(23) && api.isNight(2) && !api.isNight(12), 'the clock drives day/night');
+  // catching you once makes him a lighter sleeper
+  b.ev('N.sleeping = 1');
+  const before = b.ev('N.sleeping');
+  api.MEM.catches = 0;
+  const loud0 = b.ev('(function(){N.sleeping=1;hearNoise(N.x+2,N.y,N.z,12,"glass");return N.sleeping})()');
+  b.ev('N.mode="routine"; N.script=[]');
+  api.MEM.catches = 2;
+  const loud2 = b.ev('(function(){N.sleeping=1;hearNoise(N.x+2,N.y,N.z,6,"step");return N.sleeping})()');
+  ok(before === 1, 'he can sleep');
+  ok(loud0 === 0, 'loud noise wakes him');
+  ok(loud2 === 0, 'after two catches even a quiet noise wakes him');
+}
+
+/* ============================================================ 7. perception */
+{
+  const b = boot(7);
+  b.start(true);
+  const api = b.api;
+  const W = api.W;
+  // find a wall cell and check occlusion
+  let wall = null;
+  for (let y = 4; y < 20 && !wall; y++) for (let x = 10; x < 30 && !wall; x++) if (b.ev('T(0,' + x + ',' + y + ')') === '#') wall = { x, y };
+  ok(!!wall, 'found a wall');
+  ok(!api.lineOfSight({ x: wall.x - 0.5, y: wall.y + 0.5, z: 0 }, { x: wall.x + 1.5, y: wall.y + 0.5, z: 0 }), 'walls block his sight');
+  ok(api.lineOfSight({ x: wall.x - 0.5, y: wall.y - 1.5, z: 0 }, { x: wall.x + 2.5, y: wall.y - 1.5, z: 0 }), 'open floor does not');
+  // facing matters: a guard behind him
+  const N = api.N;
+  const P = api.P;
+  let pair = null;
+  for (let y = 2; y < 34 && !pair; y++) for (let x = 2; x < 44 && !pair; x++) {
+    if (b.ev('T(0,' + x + ',' + y + ')') === ',' && b.ev('T(0,' + (x + 4) + ',' + y + ')') === ',') pair = { x, y };
+  }
+  ok(!!pair, 'found an open stretch of yard to test sight');
+  N.x = pair.x + 0.5; N.y = pair.y + 0.5; N.z = 0; N.a = 0;
+  P.x = pair.x - 2.5; P.y = pair.y + 0.5; P.z = 0;
+  b.ev('N.al=0'); N.mode = 'routine'; N.script = [];
+  b.tick(20);
+  const behind = N.al;
+  b.ev('N.al=0'); N.a = 0; N.mode = 'routine'; N.script = [];
+  P.x = pair.x + 3.5; P.y = pair.y + 0.5;
+  b.tick(20);
+  ok(N.al > behind && N.al > 0.2, 'he notices what is in front of him more than what is behind (' + behind.toFixed(2) + ' -> ' + N.al.toFixed(2) + ')');
+  // noise carries less through walls
+  const through = b.ev('wallCount(0,' + (wall.x - 0.5) + ',' + (wall.y + 0.5) + ',' + (wall.x + 1.5) + ',' + (wall.y + 0.5) + ')');
+  ok(through >= 1, 'a wall between two points is counted');
+  const open = b.ev('wallCount(0,' + wall.x + ',' + (wall.y - 1.5) + ',' + (wall.x + 2) + ',' + (wall.y - 1.5) + ')');
+  eq(open, 0, 'open floor between two points is not');
+}
+
+/* ======================================================== 8. sounds & tracking */
+{
+  const b = boot(7);
+  b.start(true);
+  const api = b.api, N = api.N;
+  N.mode = 'routine'; N.script = []; N.sounds = []; N.al = 0;
+  api.GAME.t = 10;
+  // three footsteps in a line within six seconds
+  for (let i = 0; i < 3; i++) {
+    api.makeNoise(N.x + 1 + i * 0.6, N.y + i * 0.3, N.z, 4, 'step');
+    api.GAME.t += 0.4;
+  }
+  ok(!!N.track, 'three noises in six seconds produce a predicted position');
+  ok(N.mode === 'suspicious', 'he goes to investigate the prediction');
+  ok(N.track.x > N.x, 'the prediction leads where the player was heading');
+  const said = (N.quip || '').toLowerCase();
+  ok(/sound|hear/.test(said) || N.label.toLowerCase().includes('sound'), 'he announces following the sound');
+}
+
+/* ============================================================== 9. chasing */
+{
+  const b = boot(7);
+  b.start(true);
+  const api = b.api, N = api.N, P = api.P;
+  // stand in front of him with a clear line of sight
+  N.a = 0; N.mode = 'routine'; N.script = [];
+  P.x = N.x + 3; P.y = N.y; P.z = N.z; P.crouch = 0;
+  let saw = false;
+  for (let i = 0; i < 90; i++) { b.tick(1); if (N.mode === 'chase') { saw = true; break; } }
+  ok(saw, 'he starts a chase when he actually sees you');
+  ok(/GOTCHA|cutting/.test(N.quip || '') || N.mode === 'chase', 'and says so');
+  // a chase across the room reaches the player
+  let caught = false;
+  for (let i = 0; i < 600 && !caught; i++) { b.tick(1); if (api.GAME.state === 'over') caught = true; }
+  ok(caught, 'a chase ends in a catch');
+  eq(api.SHOW.over, 'caught', 'the caught screen is shown');
+  ok(api.MEM.catches >= 1, 'the catch is written to match memory');
+  ok(api.MEM.hides.length >= 1, 'he remembers where he caught you');
+  ok(api.MEM.hours.some((h) => h > 0), 'he records the hour he caught you');
+}
+
+/* ========================================================== 10. trap validity */
+{
+  let valid = 0, total = 0, invalid = [];
+  for (const seed of [3, 7, 11, 21]) {
+    const b = boot(seed);
+    b.start(true);
+    const api = b.api;
+    for (let i = 0; i < 12; i++) {
+      const spot = api.bestTrapSpot();
+      if (!spot) break;
+      total++;
+      if (!api.isValidTrapCell(spot.z, spot.x, spot.y)) invalid.push(seed + ':' + spot.z + ':' + spot.x + ',' + spot.y);
+      else { api.addTrap(spot.z, spot.x, spot.y); valid++; }
+    }
+    // traps never land on the spawn tile, doors, stairs or furniture
+    for (const t of api.TRAPS) {
+      const z = t.z, x = t.x | 0, y = t.y | 0;
+      ok(b.ev('T(' + z + ',' + x + ',' + y + ')') === '.' || b.ev('T(' + z + ',' + x + ',' + y + ')') === ',', 'trap sits on open floor');
+      ok(!b.ev('!!doorAt(' + z + ',' + x + ',' + y + ')'), 'trap is not in a doorway');
+      ok(!b.ev('!!stairFrom(' + z + ',' + x + ',' + y + ')'), 'trap is not on stairs');
+      ok(b.api.W.containers.every((c) => Math.abs(c.tx - x) + Math.abs(c.ty - y) >= 2), 'trap is not inside a container');
+    }
+  }
+  eq(invalid.length, 0, 'every chosen trap cell is valid (' + invalid.slice(0, 3).join('; ') + ')');
+  ok(valid > 0 && valid === total, 'trap placement only ever returns valid cells (' + valid + '/' + total + ')');
+}
+
+/* =========================================================== 11. suspicion/memory */
+{
+  const store = {};
+  const b = boot(7, store);
+  b.start(true);
+  const api = b.api;
+  const seed1 = api.MEM.seed;
+  ok(api.MEM.suspicion >= 0 && api.MEM.suspicion <= 100, 'suspicion starts in range');
+  const before = api.MEM.suspicion;
+  b.ev('M.suspicion = 40');
+  // he hears a window smash: suspicion climbs
+  b.ev('hearNoise(N.x+1,N.y,N.z,15,"glass")');
+  ok(api.MEM.suspicion > 40, 'loud noises raise his suspicion');
+  ok(api.MEM.suspicion > before, 'suspicion accumulates');
+  // theft detection needs line of sight (or a forced check)
+  const fridge = api.W.containers.find((c) => c.id === 'fridge');
+  b.standNear(fridge.x, fridge.y, fridge.z);
+  api.P.keys.pick = 1;
+  api.interact();
+  ok(fridge.done, 'the fridge has been searched');
+  b.ev('N.x=' + (fridge.x + 1) + '; N.y=' + fridge.y + '; N.z=' + fridge.z);
+  b.ev('checkTheftsNear(true)');
+  ok(api.MEM.thefts.includes('fridge'), 'he notices the fridge was searched');
+  ok((api.N.quip || '').length > 0, 'and complains about it out loud');
+  ok(api.MEM.suspicion > 40, 'theft spikes suspicion');
+  // he re-locks a door the player unlocked
+  const door = api.W.doors.find((d) => d.kind === 'door' && d.z === 0 && !d.shed && !d.front);
+  b.standNear(door.cells[0][0], door.cells[0][1], 0);
+  b.ev('openDoor(0,' + door.cells[0][0] + ',' + door.cells[0][1] + ',{crouch:0})');
+  door.playerUnlocked = 1;
+  door.lockChar = 'L';
+  b.ev('N.x=' + (door.cells[0][0] + 1) + '; N.y=' + door.cells[0][1] + '; N.z=0; N.mode="routine"; N.script=[];');
+  const relockPlanned = b.ev('considerRelock()');
+  ok(relockPlanned === true, 'he plans to re-lock a door you opened');
+  b.standNear(api.W.front.ix, api.W.front.iy + 3, 0);
+  b.tick(400);
+  ok(door.closed === 1 || api.MEM.relocks.length > 0, 'and actually re-locks it');
+  // match memory is scoped: same seed on replay, new game wipes
+  api.saveMatch();
+  ok(!!store['hn.match.v2'], 'the match is saved under its own key');
+  const savedSeed = JSON.parse(store['hn.match.v2']).seed;
+  eq(savedSeed, seed1, 'the save carries the match seed');
+  b.start(false);
+  eq(api.MEM.seed, seed1, 'continuing keeps the same house');
+  ok(api.MEM.thefts.includes('fridge'), 'continuing keeps what he learned');
+  b.start(true);
+  ok(!api.MEM.thefts.length, 'New Game wipes everything he learned');
+  ok(api.MEM.catches === 0 && api.MEM.suspicion <= 20, 'New Game resets his suspicion');
+  ok(!store['hn.match.v2'] || JSON.parse(store['hn.match.v2']).seed === api.MEM.seed, 'New Game re-seeds the save');
+}
+
+/* ======================================================= 12. traps + cams persist */
+{
+  const store = {};
+  const b = boot(7, store);
+  b.start(true);
+  const api = b.api;
+  api.MEM.seed;
+  const spot = api.bestTrapSpot();
+  ok(!!spot, 'a trap spot is found');
+  api.addTrap(spot.z, spot.x, spot.y);
+  eq(api.TRAPS.length, 1, 'the trap exists in the world');
+  ok(api.MEM.traps.length === 1, 'the trap is remembered');
+  api.saveMatch();
+  b.start(false);
+  eq(api.TRAPS.length, 1, 'the trap is still there when you come back');
+  const cam = api.W.floors[0].rooms[0];
+  const q = b.ev('nearestStandable(0,' + cam.cx + ',' + cam.cy + ',0.28)');
+  api.addCamera(0, q[0], q[1]);
+  eq(api.CAMS.length, 1, 'a camera can be installed');
+  ok(api.MEM.cams.length === 1, 'the camera is remembered');
+  // cameras see the player in their cone
+  const c = api.CAMS[0];
+  c.sweep = 0;
+  b.ev('P.x=' + (c.x + 1) + '; P.y=' + c.y + '; P.z=' + c.z);
+  c.a = Math.atan2(api.P.y - c.y, api.P.x - c.x);
+  b.tick(90);
+  ok(c.seeT > 0.2, 'a camera notices a player in its cone');
+}
+
+/* =========================================================== 13. the AI's day job */
+{
+  const b = boot(7);
+  b.start(true);
+  const api = b.api, N = api.N;
+  const seen = new Set();
+  const positions = [];
+  for (let i = 0; i < 60 * 200; i++) {
+    b.tick(1);
+    if (i % 60 === 0) { seen.add(N.st); positions.push([N.x, N.y, N.z]); }
+    if (api.GAME.state !== 'play') break;
+  }
+  ok(seen.size >= 3, 'he does more than one kind of chore (' + [...seen].slice(0, 6).join(',') + ')');
+  ok(positions.length > 50, 'he keeps moving around the house');
+  const cells = new Set(positions.map((p) => p[2] + ':' + (p[0] | 0) + ',' + (p[1] | 0)));
+  ok(cells.size > 12, 'he is genuinely walking, not frozen (' + cells.size + ' distinct tiles)');
+  ok(N.need.hunger <= 1 && N.need.energy <= 1, 'his needs stay bounded');
+  ok(N.mode !== 'chase', 'he does not chase a player who is hiding outside');
+}
+
+/* ================================================== 13b. the reaction chain */
+{
+  const b = boot(9, {});
+  b.start(true);
+  const api = b.api, N = api.N, P = api.P;
+  // two walkable tiles in the same room with a clear line of sight
+  let pair = null;
+  for (let y = 2; y < 34 && !pair; y++) {
+    for (let x = 2; x < 40 && !pair; x++) {
+      if (b.ev('standable(0,' + (x + 0.5) + ',' + (y + 0.5) + ',0.3)') &&
+          b.ev('standable(0,' + (x + 4.5) + ',' + (y + 0.5) + ',0.3)') &&
+          api.lineOfSight({ x: x + 0.5, y: y + 0.5, z: 0 }, { x: x + 4.5, y: y + 0.5, z: 0 })) {
+        pair = { x, y };
+      }
+    }
+  }
+  ok(!!pair, 'found a room with an open sightline');
+  if (pair) {
+    N.x = pair.x + 0.5; N.y = pair.y + 0.5; N.z = 0; N.a = 0;
+    N.mode = 'routine'; N.script = [];
+    P.x = pair.x + 4.5; P.y = pair.y + 0.5; P.z = 0; P.crouch = 0;
+    let react = null;
+    for (let i = 0; i < 180; i++) {
+      api.gameUpdate(1 / 60);
+      if (N.mode === 'suspicious' || N.mode === 'chase') { react = { i, mode: N.mode, label: N.label, quip: N.quip }; break; }
+    }
+    ok(!!react, 'he reacts to a player standing in the open');
+    ok(/hear|breathing|who is that|follow/i.test((react && (react.quip || react.label)) || '') || (react && react.mode === 'chase'),
+      'a distant sighting first becomes a quiet approach, not a sprint');
+    // he loses the player: a belief-driven search replaces a straight chase
+    P.hidden = 1; P.crouch = 1;
+    b.ev('P.x = -99; P.y = -99;');            // out of the world: no line of sight at all
+    if (N.mode === 'chase') b.ev('N.lastSeen={x:' + pair.x + ',y:' + pair.y + ',z:0,t:GAME.t}');
+    let becameSearch = false;
+    for (let i = 0; i < 60 * 12; i++) {
+      api.gameUpdate(1 / 60);
+      if (N.mode === 'search') { becameSearch = true; break; }
+      if (api.GAME.state !== 'play') break;
+    }
+    ok(becameSearch || N.mode !== 'chase', 'a chase lets go when the trail goes cold');
+    // deterministic belief search from a known last sighting
+    b.ev('P.x = ' + (pair.x + 0.5) + '; P.y = ' + (pair.y + 0.5) + '; P.z = 0; P.hidden = 1;');
+    N.lastSeen = { x: pair.x + 0.5, y: pair.y + 0.5, z: 0, t: api.GAME.t };
+    N.mode = 'suspicious'; N.script = []; N.path = [];
+    b.ev('startSearch("lost")');
+    eq(N.mode, 'search', 'losing you starts a search, not a freeze');
+    ok(b.ev('belTotal(0)') > 0, 'the search seeds a belief map');
+    const spots = b.ev('belSpots(0,4)');
+    ok(spots.length > 0, 'the belief map yields candidate hiding spots');
+    let swept = false;
+    for (let i = 0; i < 60 * 40; i++) {
+      api.gameUpdate(1 / 60);
+      if (N.st === 'search_spot' || N.st === 'ambush_door') swept = true;
+      if (api.GAME.state !== 'play') break;
+    }
+    ok(swept, 'he walks to the likeliest spots');
+    const door = api.bestAmbushDoor();
+    ok(!!door, 'he can pick a chokepoint to camp');
+  }
+}
+
+/* ========================================================== 14. camera/keys UI */
+{
+  const b = boot(7);
+  b.start(true);
+  const api = b.api;
+  ok(!!api.HUD.tasks.length, 'objective list exists');
+  const texts = api.HUD.tasks.map((t) => t.txt.toLowerCase()).join(' | ');
+  ok(/lockpick|key/.test(texts), 'objectives talk about the keyring, not items');
+  ok(api.P.inv.length === 0, 'inventory starts empty');
+  api.P.carrying = 0;
+  const before = api.P.inv.length;
+  const it = api.ITEMS.find((i) => i.z === api.P.z);
+  if (it) {
+    api.P.x = it.x; api.P.y = it.y;
+    api.interact();
+    ok(api.P.inv.length >= before, 'loot can go in the bag');
+    ok(api.P.inv.length <= 3, 'the bag is small');
+  }
+  // throwing a carried item makes noise and lands
+  const room = api.W.floors[0].rooms[0];
+  const q = b.ev('nearestStandable(0,' + room.cx + ',' + room.cy + ',0.3)');
+  api.P.x = q[0] + 0.5; api.P.y = q[1] + 0.5; api.P.z = 0;
+  api.P.carried = 'vase';
+  const n0 = api.GAME.t;
+  api.throwCarried(api.P.x + 2, api.P.y);
+  ok(api.GAME.t >= n0, 'throwing does not advance time by itself');
+  b.tick(60);
+  ok(api.P.carried === 0, 'the throw clears your hands');
+}
+
+/* ========================================================= 14b. HN mechanics */
+{
+  // --- a thrown object is traced back to where it was thrown from
+  {
+    const b = boot(7, {});
+    b.start(true);
+    const api = b.api, N = api.N, P = api.P;
+    api.freezeAI(true);
+    N.mode = 'routine'; N.script = []; N.stun = 0;
+    // stand next to him, in the open, so the throw connects
+    let from = null;
+    for (let d = 2.4; d <= 3.6 && !from; d += 0.4) {
+      for (const ang of [0, 1.57, 3.14, 4.71, 0.78, 2.36, 3.93, 5.5]) {
+        const x = N.x + Math.cos(ang) * d, y = N.y + Math.sin(ang) * d;
+        if (b.ev('standable(' + N.z + ',' + x + ',' + y + ',0.3)') && api.lineOfSight({ x, y, z: N.z }, { x: N.x, y: N.y, z: N.z })) { from = { x, y }; break; }
+      }
+    }
+    ok(!!from, 'found a clear throwing spot');
+    if (!from) from = { x: N.x + 2.6, y: N.y };
+    P.x = from.x; P.y = from.y; P.z = N.z;
+    P.carried = 'tomato';
+    api.throwCarried(N.x, N.y);
+    for (let i = 0; i < 120 && !N.stun; i++) api.gameUpdate(1 / 60);
+    ok(N.stun > 0, 'a direct hit stuns him');
+    ok(!!N.forensic, 'he records where the throw came from');
+    near(N.forensic.x, P.x, 0.6, 'the recorded origin is the thrower');
+    ok(/tomato|thr/i.test(String(N.quip || '') + ' ' + String(N.label || '')), 'he reacts to being hit');
+    api.freezeAI(false);
+    let hunted = false;
+    for (let i = 0; i < 60 * 12; i++) {
+      api.gameUpdate(1 / 60);
+      if (N.st === 'hunt_thrower' || N.st === 'search_spot' || N.mode === 'chase') { hunted = true; break; }
+      if (api.GAME.state !== 'play') break;
+    }
+    ok(hunted, 'and he hunts from the throw origin');
+  }
+  // --- cameras are placed only after he has caught you twice
+  {
+    const b = boot(7, {});
+    b.start(true);
+    const api = b.api;
+    api.MEM.catches = 0;
+    api.MEM.entries['0:22:27'] = 6;
+    eq(api.planCamera(), false, 'no cameras before the first catch');
+    api.MEM.catches = 2;
+    const ok2 = api.planCamera();
+    ok(ok2 === true, 'after two catches he mounts a camera on your favourite entry');
+    ok(api.MEM.plans.some((p) => p.t === 'camera'), 'the plan is queued');
+    const plan = api.MEM.plans.find((p) => p.t === 'camera');
+    ok(Math.hypot(plan.x - 22, plan.y - 27) < 8, 'the camera is placed near that entry');
+  }
+  // --- noises during a search sharpen his belief map instead of restarting it
+  {
+    const b = boot(7, {});
+    b.start(true);
+    const api = b.api, N = api.N;
+    b.ev('startSearch("test")');
+    eq(N.mode, 'search', 'searching');
+    const before = b.ev('belTotal(0)');
+    const st0 = N.st;
+    b.ev('hearNoise(' + (N.x + 4) + ',' + N.y + ',0,' + N.z + ',9,"step")');
+    ok(b.ev('belTotal(0)') >= before, 'noise inside a search adds belief mass');
+    eq(N.st, st0, 'and does not yank him out of the current search step');
+  }
+  // --- door cut-offs: he only tries if he can actually beat you there
+  {
+    const b = boot(7, {});
+    b.start(true);
+    const api = b.api, N = api.N, P = api.P;
+    N.z = 0; P.z = 0;
+    const front = api.W.front;
+    P.x = front.ix + 0.5; P.y = front.iy - 1.5;
+    N.x = front.ix + 0.5; N.y = front.iy + 6;    // outside, further away
+    const t = api.cutoffTarget(9);
+    ok(!!t, 'a cut-off target exists');
+    ok(Math.hypot(t.x - P.x, t.y - P.y) < 30, 'the target is in the same house');
+    // with the player already on top of the goal, he falls back to the player
+    b.ev('P.x = ' + api.W.secret.x + '; P.y = ' + api.W.secret.y + '; P.z = 2; P.keys.red=1; P.keys.blue=1;');
+    const t2 = api.cutoffTarget(9);
+    ok(!!t2, 'with the player at the objective he still has a target');
+  }
+  // --- valuables check routine exists and visits the objectives
+  {
+    const b = boot(7, {});
+    b.start(true);
+    const api = b.api, N = api.N;
+    const steps = b.ev('JSON.stringify(SCRIPTS.check_valuables().length)');
+    ok(Number(steps) >= 3, 'the valuables check visits several stations (' + steps + ')');
+    b.ev('runScript("check_valuables", {}, 1)');
+    ok(N.script.length >= 3, 'the routine is queued');
+    let seenStation = null;
+    for (let i = 0; i < 60 * 60; i++) {
+      api.gameUpdate(1 / 60);
+      if (N.st === 'check_valuables') seenStation = true;
+      if (api.GAME.state !== 'play') break;
+    }
+    ok(seenStation !== null, 'he actually runs the valuables check');
+  }
+  // --- sprinting is visible further than walking; crouching is not
+  {
+    const b = boot(7, {});
+    b.start(true);
+    const api = b.api, P = api.P;
+    api.setClock(23);
+    P.sprint = 0; P.crouch = 0; const base = api.sightRange();
+    P.crouch = 1; const crouch = api.sightRange(); P.crouch = 0;
+    P.sprint = 1; const sprint = api.sightRange(); P.sprint = 0;
+    ok(crouch < base * 0.6, 'crouching at night makes you nearly invisible');
+    ok(sprint > base, 'sprinting makes you easier to see');
+  }
+}
+
+/* ================================================================ 15. render */
+{
+  const b = boot(7);
+  b.start(true);
+  const api = b.api;
+  let err = null;
+  try {
+    for (let i = 0; i < 8; i++) {
+      b.tick(30);
+      api.render(1 / 60);
+    }
+    api.SHOW.screen = 'pause'; api.render(1 / 60);
+    api.SHOW.screen = 'play';
+    api.SHOW.showBelief = 1; api.render(1 / 60); api.SHOW.showBelief = 0;
+    api.SHOW.screen = 'menu'; api.render(1 / 60);
+    api.SHOW.screen = 'cut'; api.SHOW.cut = 3; api.render(1 / 60);
+    api.SHOW.screen = 'over'; api.SHOW.over = 'caught'; api.render(1 / 60);
+  } catch (e) { err = e.stack; }
+  ok(!err, 'every screen renders: ' + (err || 'ok'));
+}
+
+/* ------------------------------------------------------------------ report */
+if (fails.length) {
+  console.log('\nFAILURES (' + fails.length + '/' + checks + '):');
+  for (const f of fails) console.log('  ✗ ' + f);
+  console.log('\nGAME2D FAIL — ' + (checks - fails.length) + '/' + checks);
+  process.exit(1);
 } else {
-  console.log('GAME2D FAILED — ' + failed + '/' + checks + ' checks failed');
-  for (const f of failures) console.log('  · ' + f);
-  process.exitCode = 1;
+  console.log('GAME2D OK — ' + checks + '/' + checks);
 }

@@ -1,172 +1,197 @@
-# HelloMistral 2D 🔦
+# Hello Neighbour 2D 🔦
 
-A single-file browser stealth game about breaking into your neighbour's house and
-stealing the secret in his vault — while an adaptive AI patrols, listens, searches
-a belief map, and remembers how you play.
+A single-file browser stealth game. Break into a procedurally generated house,
+out-think a neighbour who **learns how you play**, and take what is locked in his
+basement.
 
-Everything lives in **[`index.html`](index.html)**: no build step, no dependencies,
-no external assets.
+Everything lives in **[`index.html`](index.html)** — no build step, no
+dependencies, no external assets, no network. Open the file, press **Play**.
 
-![Gameplay](docs/gameplay.png)
+![The menu](docs/menu.png)
 
-*Sneaking through the living room while he cooks dinner in the kitchen.*
+## What is in this build
 
-Open it directly in a browser, or serve the folder:
+| System | What it actually does |
+| --- | --- |
+| **Procedural house** | BSP rooms per floor, a union-find spanning tree of doorways plus extra loop doors, a study that is a true dead end, a cellar nook cut into a corner, windows that are guaranteed to have floor behind them, furniture that can never seal a room. Every seed is validated for solvability before it is accepted. |
+| **Three floors** | Ground, upper and basement, joined by two stairways. The neighbour uses the stairs too. |
+| **Keyring, not pockets** | The lockpick, the red key and the blue key live on a HUD keyring. They are never items, never in the bag, never throwable. |
+| **Day / night** | The clock runs 42 real seconds per in-game hour. At night his sight drops 20%, the house is dark, lit rooms pool warm light. Crouching at night is nearly invisible; sprinting is not. |
+| **A neighbour who learns** | Footstep triangulation, belief-map searches, chokepoint ambushes, door cut-offs, tomato forensics, theft detection, re-locking, boarding, traps, cameras. Details below. |
+| **Match-scoped memory** | Everything he learns belongs to one match. Continue keeps it, New Game wipes it. |
 
-```bash
-python3 -m http.server 8000   # then open http://localhost:8000
-```
+![Night raid](docs/gameplay.png)
+
+*Night. Crouched in the doorway of the kitchen while he cooks. The cone is his
+actual field of view — not decoration.*
 
 ## How to play
 
 | Input | Action |
 | --- | --- |
-| **WASD** | Move |
-| **Shift** | Sprint — fast but very loud |
-| **C** | Crouch — slow, quiet, harder to see |
-| **E** | Pick up / press. **Hold E** to search containers, pick locks, or disarm traps |
-| **Click / F** | Throw the held object (tomatoes are grown in the garden) |
-| **Q** | Drop the held object |
-| **1–4** | Select inventory slot |
-| **Mouse wheel** | Zoom |
-| **H** | Show his belief map |
-| **P** | Show his current path |
-| **Esc** | Pause |
+| **WASD / arrows** | Move |
+| **Shift** | Sprint — fast, loud, and visible |
+| **C** | Crouch — slow, silent, hard to see |
+| **E** | Use: search, open, pick locks, take stairs, climb windows, open the stash |
+| **G** | Grab / set down a loose object |
+| **Q** / **F** / **left-click** | Throw ahead / throw at the cursor |
+| **H** | Hide (dark corners only) |
+| **T** | Torch — light, but he sees you further |
+| **M** | His belief map |
+| **Shift+wheel** | Zoom |
+| **Esc / P** | Pause, with the panel of everything he knows |
 
-**Objective:** steal the SECRET from the vault.
+**The route.** Get the **lockpick** from the shed → inside the house → pick the
+**study** door upstairs → take the **blue key** from the desk → take the **red
+key** from the kitchen fridge → unlock the **basement** door → take what is in
+the stash.
 
-1. Find the **lockpick** in the shed (west yard).
-2. Find the **red key** in the kitchen fridge.
-3. Find the **blue key** in the study desk — the study door needs the lockpick.
-4. Unlock the basement door in the workshop with the red + blue keys and take the SECRET.
+The front door, the windows and the cellar are all real routes. Breaking a window
+is loud; he will notice and board it up on a later attempt.
 
-The front door and every window are viable routes. Breaking a window is loud but
-works; boarded windows are not. `MAKE HIM FORGET EVERYTHING` on the title screen
-wipes his persistent memory.
+## The neighbour
 
-## What changed in this revision
+He is a small, honest simulation rather than a scripted chase.
 
-### The old build did not run
+![The basement](docs/basement.png)
 
-The pasted HTML contained literal line breaks inside JavaScript string literals
-(in the catch screen and the HUD), so the whole script failed to parse. Those are
-fixed, along with several runtime bugs:
+*Three floors down: the vault, the stash, and the only reason to be here.*
 
-- **The chase crash.** The cut-off branch read `P.vel`, which does not exist, and
-  threw `TypeError: Cannot read properties of undefined` as soon as the neighbour
-  had line of sight from more than six tiles away. It now uses the player's real
-  `vx/vy`. Throw leading also uses the player's velocity instead of the neighbour's.
-- **The window trap.** `inner()` fell back to the window tile itself when no
-  adjacent `'.'` floor existed (the TV blocks one side, the yard is `','`, not `'.'`).
-  The neighbour therefore walked *into* the window cell, repaired or boarded it,
-  and sealed himself inside a now-solid tile. He could never move again.
-- **Retry soft-lock.** A catch reset the key flags but left every container marked
-  looted, so the keys were gone forever. Retry now resets containers, tomato
-  plants, loose items, doors, projectiles and the SECRET while keeping his learned
-  fortifications.
-- **A thrown object could be picked out of the air**, could hit him through a
-  wall, and made him investigate his own throw. A full inventory also still
-  consumed a tomato. All fixed.
+### What he perceives
 
-### The window fix is layered
+- **A real view cone** with occlusion: walls, closed doors and furniture block
+  sight. No wallhacks — the cone you see on screen is the cone he uses.
+- **Stale sightings.** Alertness rises while he looks at you and decays when he
+  does not; a glimpse in the dark does not instantly become a chase.
+- **Hearing through geometry.** Noise radius is attenuated per wall crossed and
+  almost mute between floors. Footsteps are quiet when crouched, loud when
+  sprinting.
+- **A rolling six-second noise buffer.** Three or more noises inside six seconds
+  give him a direction *and* a speed, so he walks to the **predicted** position
+  instead of the last one. "Following the sound…"
+- **Night realism.** Sight range ×0.8 at night, ×1.5 with your torch on, ×1.15
+  when you sprint, ×0.55 when you crouch, and a lit room helps him spot you.
+- **Cameras**, once he has caught you twice, sweep a cone and radio him.
 
-Fixing `inner()` alone would be fragile, so there are now four separate guards:
+### What he does about it
 
-1. **Safe inspection spots.** Window work is done from an adjacent, standable
-   cell on the neighbour's side of the window — never from the window tile.
-2. **Eviction before sealing.** If the player or neighbour is standing in the
-   target tile when it is boarded/repaired/locked, they are pushed to the nearest
-   safe cell first. If that is impossible, the seal is cancelled.
-3. **Un-stick safety net.** Every quarter second the game checks whether either
-   character is inside a solid tile and relocates them if so.
-4. **Watchdogs.** `follow()` detects no-progress, side-steps, and re-paths, and
-   abandons a step after five failed jinks; every `go` step also has a 25-second
-   limit. A single unreachable target can no longer freeze the whole AI.
+- **Quiet approach.** A sighting further than 7.5 tiles becomes a slow,
+  close-the-distance approach; the chase only starts when he is sure.
+- **Door cut-offs.** If you break line of sight in the open he runs for a doorway
+  on your route to the objective — but only if he can actually beat you there
+  (`distance / 3.8 < your distance / 3.5`). "Cutting you off at the door!"
+- **Belief-map search.** Losing you seeds a per-floor probability map from your
+  last position, your velocity, your likely objective, the places you have hidden
+  before, minus the places he has just cleared. He sweeps the peaks.
+- **Chokepoint ambushes.** Every third search step he camps the nearest doorway
+  and faces the approach instead of wandering.
+- **Tomato forensics.** A thrown object that hits him records its origin; he
+  wipes his face and hunts from where it came.
+- **Traps**, placed only on walkable floor that is not a doorway, a stair, a
+  window, furniture, a container's approach, his own tile or your feet — and
+  never somewhere that could disconnect a room.
+- **House-keeping.** He re-locks doors you picked, boards windows you broke and
+  puts moved objects back where they belong.
 
-### A smarter neighbour
+### What he remembers
 
-- **63 new routines** — 156 tasks across 30 stations, from `defrost_freezer` to
-  `build_birdhouse`, `oil_gate`, `stamp_invoices` and `scrub_ring`.
-- **Persistent heat map.** He records where he sees you on a 4×4-cell grid. Chores
-  whose stations are in your favourite areas get chosen more often, patrols drift
-  there, and his sight range is slightly better in places he associates with you.
-- **Time memory.** He records the hour you are active and sees and hears further
-  at that hour on later attempts.
-- **Objective guard.** When he finds a looted fridge, desk or toolbox, he raises
-  his suspicion and starts guarding the next objective. With both keys stolen, or
-  two containers found empty, he camps the basement door.
-- **Interception instead of pure pursuit.** When he still sees you but cannot walk
-  straight at you, he routes toward a predicted point on your path to your likely
-  objective (shed → kitchen → study → vault) rather than to where you are now.
-- **Smarter searching.** Losing you seeds a belief map from your last position,
-  velocity *and* your predicted goal. He clears the most likely spots, sweeps rooms
-  from multiple points, checks the wardrobe/bed/bath hiding places, avoids
-  re-searching places he just cleared, and gives up after ~30 seconds.
-- **Noise discipline.** Repeated footsteps near the same point update his current
-  target instead of resetting his script every 0.36 s. Glass sends him to the window,
-  door noise sends him to check and close the door, and thrown objects train a
-  persistent decoy memory: after enough throws in one area, he goes looking where
-  the object came from.
-- **Better logistics.** He repairs the *nearest* broken window, places traps on a
-  safe tile even if the planned tile was boarded, reacts to camera and trap alarms,
-  and plans fortifications across attempts. Disarming a trap also removes it from
-  his long-term memory, so it does not quietly return after a reload.
+![His head](docs/vision.png)
 
-Press **H** while playing to see the game the way he does — the belief map he has
-built of where you probably are, and the route he is taking to check it:
+*Press **M** during play: the red wash is his belief about where you are, the
+dashed line is his route.*
 
-![The neighbour's belief map and path](docs/vision.png)
+All of it is per match and visible in the pause panel:
 
-*Red = where he thinks you are. Blue line = his current path. The `?` is his
-alertness. This is a real frame, not concept art.*
+- **Suspicion** — a slow meter fed by noises, broken glass, sightings and thefts,
+  decaying over time, driving how often he patrols, guards the basement and
+  checks his valuables.
+- **Your hours** — a histogram of when he has actually spotted you. Those hours
+  get patrols and a guard on the basement door.
+- **Your routes** — how often you walk each tile; that is where traps go.
+- **Your entries** — doors and windows you use; after two catches that is where
+  the camera goes.
+- **Thefts** — he only notices an emptied container or a missing ornament when he
+  can actually see it. "Someone has been in my fridge!" costs you 14 suspicion
+  and gets the container watched.
+- **Hiding places** — where he has caught you seeds the next search.
+- **The lighter sleeper** — after the first catch, less noise wakes him.
 
-He still sleeps, bathes, cooks, does chores, gets bored, and can be distracted —
-the routine is what makes the hunt feel human.
+**Caught?** The match restarts in the same house with everything he learned
+intact. **New Game** erases all of it, including traps, cameras and boarded
+windows.
+
+## Procedural generation
+
+Every match has its own seed and its own house. A floor is a BSP tree; leaves
+become rooms; doorways are carved along a **union-find spanning tree of shared
+walls** so the floor is always connected, then ~22% extra doors are added to
+create loops and shortcuts. Windows are fitted last, from the outside in, so one
+can never end up with a wall behind it. The basement is a fixed shell with a
+stair and a vault; the cellar door is cut into a room corner with two sealing
+walls so it cannot become a corridor.
+
+Then `validateWorld` proves the seed is fair before the game accepts it:
+
+- every room reachable with everything unlocked;
+- the toolbox and the red key reachable with no keys;
+- the desk reachable only with the lockpick;
+- the study genuinely locked, the basement genuinely locked;
+- the basement secret unreachable without the red key and reachable with it;
+- stair tiles `U`/`N` on both ends, doors never on stairs, furniture always solid;
+- containers solid, standable from at least one adjacent tile;
+- every window has interior floor behind it.
+
+The game tries seeds until one passes; in practice ~88% of raw seeds are valid
+and a build takes ~1.2 attempts. A 900-line headless suite generates forty of them
+and checks the invariants.
 
 ## Tests
 
 ```bash
-node test/game2d.js
+node test/game2d.js     # 350 checks
 ```
 
-77 headless checks, including a full playthrough driven only by simulated key
-presses — shed → kitchen → study → basement → vault — which proves the level is
-physically completable, not just logically. The suite boots `index.html` in a
-stubbed DOM/canvas and covers: task data, map reachability, rendering/HUD, all 10
-windows (repair + board), eviction and un-sticking, the old chase crash, throws
-and in-flight items, looting, catching, retry, winning, memory persistence and
-wiping, objective discovery/guarding, search, noise dedupe, door checks, decoys,
-trap placement/disarming, five minutes of routine play and three randomized fuzz
-runs.
+The suite boots the real `index.html` in a stub DOM/canvas and drives it with
+simulated key presses. It covers the generator contract (including forty
+generated worlds), a full keyboard-only run from the shed to the stash across
+three floors, keyring-vs-inventory, night senses, sight and occlusion, the noise
+buffer, the chase and the catch, belief-map search, ambushes, trap validity, theft
+detection and re-locking, camera placement gating, tomato forensics, match-scoped
+memory (continue keeps it, New Game wipes it), and every screen rendering.
 
-The previous 3D Three.js build is preserved in [`legacy-3d/`](legacy-3d/) with
-its own 25-check suite (`node legacy-3d/test/smoke.js`).
+The archived Three.js build is in [`legacy-3d/`](legacy-3d/) with its own
+25-check suite (`node legacy-3d/test/smoke.js`).
 
 ## Repository layout
 
 ```
-index.html            the entire 2D game + AI
+index.html            the entire game: generator, AI, renderer, HUD
 docs/                 screenshots used by this README
-test/game2d.js        77-check headless regression suite
+test/game2d.js        350-check headless regression suite
 test/harness.js       dependency-free DOM/canvas stub + seeded RNG
 legacy-3d/            archived v1.3 Three.js build
+.dev/                 generator + runtime sources and the assembler (git-ignored)
 README.md             this file
 LICENSE               MIT
 ```
 
+`index.html` is generated from `.dev/*.js` by `node .dev/build.js`. The shipped
+file is self-contained; the split exists only to keep the source reviewable.
+
 ## Design notes
 
-- **World:** a 56×40 tile house and yard. Walls, furniture, doors, windows and
-  yard props are data (`G`, `FU`, `RMC`, `ST`).
-- **Navigation:** 8-direction A* with octile heuristic, no corner cutting,
-  clearance and trap costs, plus line-of-sight string pulling. Broken windows are
-  passable but expensive.
-- **AI:** perception (sight cone, peripheral vision, occlusion, hearing through
-  walls) → alertness → routine / investigate / chase / search. A utility planner
-  chooses between chores, patrols, guards, investigations and fortifications.
-- **Memory:** `localStorage` under `hm2d.v1`; all new fields are normalized on load
-  so old saves keep working.
-- **No dependencies, no build, no assets.** Audio isn't included in the 2D build.
+- **World:** 48×36 tiles, three floors, `w.floors[z].G[y][x]`; the house is
+  28×25 and the basement 19×15.
+- **Navigation:** 8-way A* with no corner cutting, floor-aware hand-off through
+  stair tiles, door opening as part of the path, wall attenuation for sound.
+- **AI:** perception → belief → utility scripts (`routine`, `suspicious`,
+  `search`, `chase`, `ambush`, `fortify`), all driven by the match memory.
+- **Inspiration:** the *Hello Neighbor* alpha AI (designed around the house,
+  cut-off predictions, seeing through walls while chasing) and the published
+  interviews about an AI that reasons from sound, notices changed objects and
+  sets traps on the routes you used. This build deliberately keeps sight honest
+  (no wallhacks), adds floors, and makes the learning deterministic and per-match
+  rather than a black box.
 
 A fan-made stealth-game homage built from scratch. Not affiliated with, endorsed
 by, or using assets from any commercial game.
