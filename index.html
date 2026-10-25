@@ -1,136 +1,1647 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HelloMistral — a stealth horror tribute</title>
+<!DOCTYPE html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>HelloMistral 2D</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e16;
-    font-family: 'Segoe UI', system-ui, sans-serif; color: #e8e4d8; }
-  #app, #app canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .hud { position: absolute; z-index: 10; pointer-events: none; user-select: none; }
+:root{--bg:#7fc66a;--fg:#1b2a41;box-sizing:border-box}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#2c4a35}}
+:root[data-theme=dark]{--bg:#2c4a35}
+html,body{height:100%;margin:0;overflow:hidden;background:#16202b;font:13px system-ui,sans-serif;color:#fff}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+.p{position:fixed;background:#000b;border-radius:10px;padding:8px 12px;line-height:1.5;pointer-events:none;z-index:3}
+#hud{left:10px;top:calc(10px + env(safe-area-inset-top,0px));max-width:300px}
+#dbg{right:10px;top:calc(10px + env(safe-area-inset-top,0px));min-width:230px;font-size:12px}
+#hud,#dbg{white-space:pre-line}
+#msg{left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));font:700 18px system-ui;text-align:center}
+#inv{left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;padding:6px 8px}
+.slot{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:58px;height:30px;border:2px solid #ffffff55;border-radius:6px;background:#0008;font-size:11px}
+.slot b{opacity:.55;font-size:10px}
+.slot.sel{border-color:#ffd23f;background:#000c;color:#ffd23f}
+.bar{display:inline-block;height:6px;background:#e8c04a;border-radius:3px;vertical-align:middle}
+#ov{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(#7fd0ffdd,#bff0a0ee);color:#1b2a41;text-align:center;padding:20px}
+#ov h1{font-size:clamp(34px,7vw,66px);margin:0;color:#ff7a1a;text-shadow:3px 3px 0 #1b2a41}
+#ov button{font:700 20px system-ui;padding:12px 32px;border:4px solid #1b2a41;border-radius:14px;background:#ffd23f;cursor:pointer;color:#1b2a41}
+#ov button:hover{background:#ff7a1a}
+#ov button.ghost{font:600 12px system-ui;padding:6px 14px;border-width:2px;background:transparent;color:#1b2a41;letter-spacing:.5px}
+#ov button.ghost:hover{background:#1b2a41;color:#ffd23f}
+#ov small{max-width:680px;line-height:1.6}
+</style></head><body>
+<canvas id=c></canvas><div id=hud class=p></div><div id=dbg class=p></div><div id=inv class=p></div><div id=msg class=p style="display:none"></div>
+<div id=ov><h1>HELLO MISTRAL 2D</h1><div id=ovt>Steal the SECRET from the vault. Get the lockpick from the shed, the red key from the fridge, the blue key from the study. He has a life, a routine, and a memory.</div><button id=go>PLAY</button><button id=forget class=ghost>MAKE HIM FORGET EVERYTHING</button>
+<small>WASD move · Shift sprint (loud) · C crouch (quiet) · E pick up / hold to open · Click or F throw (tomatoes: pick them from the garden!) · Q drop · 1-4 inventory slots · wheel zoom · H his belief map · P his path · Esc pause<br><b>He now remembers your routes, your favourite hour, and which rooms you keep returning to.</b></small></div>
+<script>
+'use strict';
+/* =====================================================================
+   HELLO MISTRAL 2D
+   A single-file stealth game. The neighbour is an adaptive agent:
+   he keeps a persistent memory of your routes and habits, patrols the
+   places you use, guards the objectives you have not taken yet, searches
+   a belief map when he loses you, and gets better every attempt.
+   ===================================================================== */
+const W=56,H=40,PI=Math.PI;
+const $=i=>document.getElementById(i);
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const cl=(v,a,b)=>v<a?a:v>b?b:v;
+const dist=(a,b,c,d)=>Math.hypot(a-c,b-d);
+const winKey=(x,y)=>x+','+y;
 
-  #crosshair { top: 50%; left: 50%; transform: translate(-50%,-50%);
-    width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.75); }
-  #prompt { top: 58%; left: 50%; transform: translateX(-50%); font-size: 15px;
-    background: rgba(8,10,16,.72); padding: 6px 14px; border-radius: 6px; letter-spacing: .3px; }
-  #holdwrap { top: 63%; left: 50%; transform: translateX(-50%); width: 160px; height: 6px;
-    background: rgba(255,255,255,.15); border-radius: 3px; overflow: hidden; }
-  #holdbar { height: 100%; width: 0%; background: #e8c04a; }
-  #msg { bottom: 13%; left: 50%; transform: translateX(-50%); font-size: 16px; font-style: italic;
-    text-shadow: 0 2px 6px #000; transition: opacity .3s; white-space: nowrap; }
-  #inv { bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
-  #inv .slot { width: 46px; height: 46px; border: 2px solid rgba(255,255,255,.28); border-radius: 8px;
-    display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
-    background: rgba(8,10,16,.55); color: #e8c04a; }
-  #inv .slot.filled { border-color: #e8c04a; }
-  #tools { bottom: 24px; left: 24px; display: flex; gap: 6px; }
-  #keys { bottom: 78px; left: 24px; display: flex; flex-direction: column; gap: 6px; }
-  .chip { font-size: 10px; font-weight: 700; letter-spacing: 1px; padding: 4px 8px; border-radius: 4px;
-    background: rgba(8,10,16,.6); border: 1px solid rgba(255,255,255,.25); }
-  .key-red { color: #ff7a7a; border-color: #d93a3a; }
-  .key-blue { color: #7aa8ff; border-color: #3a6fd9; }
-  .key-green { color: #7ae096; border-color: #3fae4a; }
-  #obj { top: 24px; left: 24px; font-size: 13px; line-height: 1.7; text-shadow: 0 2px 4px #000;
-    background: rgba(8,10,16,.45); padding: 10px 14px; border-radius: 8px; max-width: 320px; }
-  #obj div::before { content: '▸ '; color: #e8c04a; }
-  #attempt { top: 24px; right: 24px; font-size: 12px; opacity: .75; text-shadow: 0 2px 4px #000; }
-  #alert { top: 12%; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: 800;
-    letter-spacing: 2px; text-shadow: 0 2px 8px #000; }
-  #alert.chase { color: #ff5252; animation: pulse .5s infinite alternate; }
-  #alert.suspect { color: #e8c04a; }
-  @keyframes pulse { from { opacity: .65; } to { opacity: 1; } }
-  #room { bottom: 24px; right: 24px; font-size: 12px; opacity: .6; text-shadow: 0 2px 4px #000; }
-  #vignette { inset: 0; box-shadow: inset 0 0 130px 30px rgba(0,0,0,.6); transition: box-shadow .4s; }
-  #vignette.chase { box-shadow: inset 0 0 130px 30px rgba(0,0,0,.6), inset 0 0 140px 40px rgba(255,20,20,.35); }
+/* ---------------------------------------------------------------- map */
+const G=[];
+for(let y=0;y<H;y++){G[y]=[];for(let x=0;x<W;x++)G[y][x]=x==0||y==0||x==W-1||y==H-1?'F':','}
+const R=(a,b,c,d,h)=>{for(let y=b;y<=d;y++)for(let x=a;x<=c;x++)G[y][x]=h};
+const T=(x,y)=>(G[y|0]||[])[x|0]||'F';
+R(12,7,43,30,'#');R(13,8,42,29,'.');R(23,7,23,30,'#');R(34,7,34,30,'#');
+R(13,17,22,17,'#');R(24,14,33,14,'#');R(24,21,33,21,'#');R(35,17,42,17,'#');R(35,23,42,23,'#');
+R(43,24,49,29,'#');R(44,25,48,28,'.');R(2,8,7,13,'#');R(3,9,6,12,'.');
+[[23,12,'D'],[17,17,'D'],[23,25,'D'],[28,14,'D'],[28,21,'D'],[34,19,'D'],[34,26,'D'],[34,11,'L'],[28,30,'D'],[26,7,'D'],[43,27,'B'],[7,11,'D'],
+[12,12,'W'],[17,7,'W'],[12,24,'W'],[17,30,'W'],[30,7,'W'],[38,30,'W'],[43,20,'W'],[43,12,'W'],[38,7,'W'],[4,8,'W'],[28,39,',']].forEach(a=>G[a[1]][a[0]]=a[2]);
+const FU=[['couch',14,12,4,1,0],['tv',15,8,3,1,'T'],['table',15,10,2,1,'T'],['shelf',20,8,3,1,'S'],['sink',24,8,2,1,'T'],['stove',27,8,2,1,'T'],['counter',29,8,3,1,'T'],['fridge',32,8,1,1,'S'],['table',27,11,3,1,'T'],['table',27,17,4,2,'T'],['coat',25,22,1,1,'S'],['mirror',30,22,1,1,'S'],['bed',14,26,3,3,0],['wardrobe',20,18,3,1,'S'],['night',17,26,1,1,'T'],['desk',36,9,3,1,'T'],['shelf',41,8,2,1,'S'],['toilet',41,18,1,1,'T'],['sink',38,18,2,1,'T'],['tub',36,21,3,1,'T'],['bench',36,24,5,1,'T'],['rack',41,28,1,1,'S'],['mbox',30,37,1,1,'T'],['trash',35,35,1,1,'T'],['tree',14,3,1,1,'S'],['tree',46,4,1,1,'S'],['tree',48,33,1,1,'S'],['tree',18,36,1,1,'S'],['toolbox',3,10,1,1,'T']];
+const PL=[[4,34],[6,34],[8,34],[4,36],[6,36],[8,36]].map(a=>({x:a[0],y:a[1],n:3}));
+FU.forEach(f=>{if(f[5])R(f[1],f[2],f[1]+f[3]-1,f[2]+f[4]-1,f[5])});PL.forEach(p=>G[p.y][p.x]='T');
+const RMC=[[44,25,48,28,'#8d97a8','Vault'],[3,9,6,12,'#dccaa6','Shed'],[13,8,22,16,'#e6cf9f','Living Room'],[24,8,33,13,'#d9e8e4','Kitchen'],[24,15,33,20,'#ead9b0','Dining Room'],[24,22,33,29,'#dcdcea','Foyer'],[13,18,22,29,'#eed6e4','Bedroom'],[35,8,42,16,'#d9c39a','Study'],[35,18,42,22,'#cde6f2','Bathroom'],[35,24,42,29,'#cfcfcf','Workshop']];
+const roomOf=(x,y)=>{x|=0;y|=0;for(const r of RMC)if(x>=r[0]&&x<=r[2]&&y>=r[1]&&y<=r[3])return r[5];return 'Yard'};
+const roomRect=n=>RMC.find(r=>r[5]===n);
+const ST={};[['tv',16,12],['couch',15,12],['couch',17,12],['shelf',21,9],['dshelf',41,9],['stove',28,9],['sink',25,9],['fridge',32,9],['counter',30,9],['ktable',28,12],['dtable',26,17],['dtable',31,17],['coat',25,23],['mirror',30,23],['bed',15,27],['wardrobe',21,19],['night',17,27],['toilet',41,19],['bsink',38,19],['tub',37,20],['desk',37,10],['bench',38,25],['rack',41,27],['basement',42,27],['window',13,12],['window',13,24],['window',42,12],['window',38,8],['window',17,8],['mailbox',30,36],['trash',35,34],['garden',5,35],['garden',7,35],['shed',4,10],['tree',14,4],['tree',46,5],['tree',47,33],['gate',28,38],['front',28,31]].forEach(a=>(ST[a[0]]=ST[a[0]]||[]).push([a[1]+.5,a[2]+.5]));
 
-  .screen { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 18px; text-align: center;
-    background: radial-gradient(ellipse at center, rgba(12,16,26,.88), rgba(4,6,10,.97)); }
-  .screen h1 { font-size: 56px; letter-spacing: 4px; color: #e8c04a; text-shadow: 0 4px 24px rgba(0,0,0,.8); }
-  .screen h1 span { color: #ff5252; }
-  .screen h2 { font-size: 26px; font-weight: 300; letter-spacing: 6px; color: #ff5252; }
-  .screen p, .screen .notes { font-size: 15px; line-height: 1.8; opacity: .9; max-width: 640px; }
-  .screen .notes div { color: #e8c04a; }
-  .controls { display: grid; grid-template-columns: auto auto; gap: 4px 18px; font-size: 13px;
-    opacity: .85; margin: 6px 0; text-align: left; }
-  .controls b { color: #e8c04a; font-weight: 600; }
-  .screen button { font: inherit; font-size: 16px; padding: 12px 34px; border-radius: 8px;
-    border: 2px solid #e8c04a; background: rgba(232,192,74,.12); color: #e8c04a; cursor: pointer;
-    letter-spacing: 2px; transition: all .2s; }
-  .screen button:hover { background: #e8c04a; color: #10131c; }
-  .screen button.ghost { border-color: rgba(255,255,255,.3); color: #ccc; font-size: 13px; padding: 8px 18px; }
-  .hidden { display: none !important; }
-  .disclaimer { position: absolute; bottom: 16px; font-size: 11px; opacity: .45; max-width: 80%; }
-</style>
-</head>
-<body>
-<div id="app"></div>
+/* ------------------------------------------------------- life's routines
+   156 named tasks. Each one is a tiny behaviour: name, station, duration
+   (half-seconds), need effects (effect / 10), allowed hours (* = any). */
+const SRC=`watch_tv tv 25-40 b-6 17-24
+watch_news tv 15-25 b-4 6-9
+channel_surf tv 8-14 b-3 *
+watch_cooking_show tv 15-25 b-3 *
+watch_game tv 20-35 b-6 18-23
+fall_asleep_tv tv 20-30 e-5,b-2 21-26
+nap_on_couch couch 20-30 e-4 13-17
+read_paper couch 15-25 b-4 6-10
+do_crossword couch 15-25 b-5 *
+sip_coffee couch 8-14 t-3,b-2 6-11
+hum_a_tune couch 6-10 b-2 *
+read_book shelf 15-30 b-5 *
+dust_shelf shelf 10-18 b-2,d-3 *
+rearrange_books shelf 10-16 b-3 *
+look_up_recipe shelf 8-12 b-2 17-20
+cook_dinner stove 22-32 h-4 17-20
+fry_eggs stove 12-20 h-3 6-10
+boil_pasta stove 14-20 h-3 12-14,18-20
+make_tea stove 10-14 t-4 *
+bake_bread stove 25-35 h-2,b-3 14-17
+wash_dishes sink 15-22 d-3,y-1 *
+drink_water sink 5-8 t-7 *
+rinse_vegetables sink 8-12 b-1 17-19
+fill_kettle sink 6-9 t-2 *
+open_fridge fridge 6-10 h-3 *
+midnight_snack fridge 8-12 h-5 22-27
+check_leftovers fridge 8-12 h-2 *
+pour_milk fridge 6-9 t-3,h-1 *
+chop_veg counter 12-18 b-2 16-19
+wipe_counter counter 10-15 d-3 *
+make_sandwich counter 10-14 h-4 11-14
+eat_dinner ktable 18-26 h-7 18-21
+eat_breakfast ktable 12-18 h-6 6-9
+eat_lunch ktable 14-20 h-6 12-14
+polish_table dtable 10-16 d-3 *
+set_table dtable 8-12 b-1 16-19
+write_letters dtable 15-25 b-5 *
+fold_napkins dtable 6-9 b-2 *
+hang_coat coat 5-8 d-2 *
+check_pockets coat 6-9 b-2 *
+comb_mustache mirror 8-12 y-3 *
+admire_mirror mirror 6-10 b-3 *
+sleep bed 60-90 e-9 22-30
+make_bed bed 10-15 d-3 6-10
+lie_awake bed 15-25 e-2 22-27
+read_in_bed bed 15-25 b-4,e-2 21-24
+change_clothes wardrobe 10-14 y-3 *
+iron_shirt wardrobe 15-22 b-2 *
+fold_laundry wardrobe 12-18 d-2 *
+wind_alarm_clock night 5-8 b-1 21-24
+use_toilet toilet 8-12 l-9 *
+flush_twice toilet 5-7 l-2 *
+brush_teeth bsink 8-12 y-4 6-9,21-24
+wash_hands bsink 6-9 y-3 *
+shave bsink 10-14 y-3 6-9
+take_bath tub 30-40 y-9 19-22
+scrub_tub tub 12-18 d-3 *
+pay_bills desk 20-30 b-4 9-17
+write_notes desk 15-25 b-4 *
+study_map desk 15-22 b-3 *
+lock_drawer desk 6-9 b-1 *
+count_cash desk 12-18 b-3 *
+file_papers dshelf 12-18 d-2,b-2 *
+check_safe dshelf 8-12 b-2 *
+fix_toaster bench 25-35 b-5 9-17
+sharpen_tools bench 15-22 b-3 *
+hammer_nails bench 12-18 b-3 *
+saw_planks bench 15-22 b-4 *
+polish_gear bench 12-16 b-2 *
+organize_tools rack 12-18 d-2,b-2 *
+oil_hinges rack 8-12 b-2 *
+check_basement_lock basement 6-9 b-1 *
+polish_basement_lock basement 8-12 b-2 *
+listen_at_basement basement 10-16 b-3 *
+look_out_window window 10-18 b-3 *
+close_curtains window 6-9 b-1 17-22
+check_latches window 8-12 b-1 *
+check_mail mailbox 6-10 b-2 9-17
+send_letter mailbox 5-8 b-1 *
+take_out_trash trash 8-12 d-3 18-21
+sort_recycling trash 10-14 d-2 *
+water_plants garden 15-22 b-3 7-10,16-19
+pick_tomatoes garden 12-18 b-2 *
+weed_garden garden 15-25 b-3 *
+prune_roses garden 12-18 b-3 *
+feed_birds garden 8-12 b-2 6-9
+fetch_tools shed 10-14 b-2 *
+tidy_shed shed 15-22 d-2,b-2 *
+rake_leaves tree 15-22 b-3 *
+inspect_fence gate 10-15 b-2 *
+look_down_street gate 10-16 b-3 *
+sweep_porch front 12-18 d-2,b-2 7-10
+check_front_door front 6-9 b-1 20-23
+watch_documentary tv 20-30 b-4 20-23
+fix_antenna tv 10-16 b-2 *
+fluff_cushions couch 8-12 d-2,b-1 *
+find_remote couch 5-8 b-2 *
+dust_bookshelf shelf 12-18 d-3 *
+donate_books shelf 15-22 b-2 10-15
+brew_tea stove 8-14 t-4,b-2 15-18
+scrub_hob stove 12-18 d-3 *
+sterilise_jars stove 18-26 d-2,b-2 13-16
+soak_pots sink 15-22 d-3 *
+descale_kettle sink 10-16 d-2 *
+defrost_freezer fridge 25-35 d-3,b-2 8-11
+stock_fridge fridge 15-25 h-3 8-11,17-20
+knead_dough counter 18-28 b-2,h-2 14-17
+sort_pantry counter 14-22 d-3 *
+sharpen_knives counter 10-14 d-1 *
+polish_silver dtable 15-25 d-2,b-2 *
+arrange_flowers dtable 8-12 b-2 9-12
+sweep_floor dtable 10-16 d-3 *
+sew_button coat 10-16 d-1,b-2 *
+sort_scarves coat 8-12 d-2 *
+trim_beard mirror 12-18 y-3 6-9
+practise_smile mirror 5-9 b-2 *
+change_sheets bed 20-30 d-3,e-2 9-12
+fluff_pillows bed 8-12 d-2 *
+match_socks wardrobe 15-25 d-2,b-2 *
+air_suits wardrobe 12-18 d-3 *
+find_glasses night 6-10 b-2 6-9
+set_alarm night 4-7 b-1 21-24
+fix_cistern toilet 15-25 d-3 *
+clean_mirror bsink 12-20 d-3 *
+refill_soap bsink 5-8 b-1 *
+scrub_ring tub 15-25 d-4 *
+soak_feet tub 20-30 e-3,l-2 20-23
+balance_ledger desk 25-35 b-4 18-21
+sharpen_pencils desk 10-16 d-2 *
+write_shopping_list desk 10-16 b-3 *
+alphabetise_files dshelf 18-28 d-3,b-3 9-17
+stamp_invoices dshelf 12-20 b-2 9-17
+oil_saw bench 15-25 d-3,b-2 *
+sort_screws bench 12-20 d-2 *
+build_birdhouse bench 25-35 b-4 10-16
+count_nails rack 10-18 b-2,d-2 *
+label_jars rack 8-14 d-2,b-2 *
+check_generator basement 20-30 b-3 8-12
+sweep_steps basement 12-20 d-3 *
+watch_street window 12-20 b-3 15-19
+clean_glass window 10-16 d-2 *
+sort_post mailbox 6-10 b-2 8-11
+write_reply mailbox 15-25 b-3 *
+hose_bins trash 10-16 d-3 *
+flatten_boxes trash 12-18 d-2 *
+trim_hedge garden 20-30 b-4,e-2 8-11
+plant_bulbs garden 15-25 d-1,b-3 9-12
+pick_beans garden 10-16 b-2 16-19
+oil_ladder shed 12-20 d-3,b-2 *
+restock_shelf shed 15-25 d-3 *
+pick_apples tree 15-25 b-3,h-2 9-12
+hang_feeder tree 8-12 b-2 6-9
+oil_gate gate 12-20 d-2,b-2 *
+check_hinges gate 8-14 d-1,b-2 *
+wash_step front 10-16 d-3 *
+shake_mat front 6-10 d-3 *`;
+const TASKS=SRC.trim().split('\n').filter(Boolean).map(l=>{
+ const p=l.trim().split(/\s+/),d=p[2].split('-').map(Number),eff={};
+ p[3].split(',').forEach(e=>eff[e[0]]=parseFloat(e.slice(1))/10);
+ return {name:p[0],st:p[1],a:d[0],b:d[1],eff,hrs:p[4]==='*'?null:p[4].split(',').map(r=>r.split('-').map(Number))};
+});
+const inWin=(t,h)=>!!t.hrs&&t.hrs.some(r=>(h>=r[0]&&h<r[1])||(h+24>=r[0]&&h+24<r[1]));
 
-<div id="vignette" class="hud"></div>
-<div id="crosshair" class="hud"></div>
-<div id="prompt" class="hud hidden"></div>
-<div id="holdwrap" class="hud hidden"><div id="holdbar"></div></div>
-<div id="msg" class="hud"></div>
-<div id="obj" class="hud"></div>
-<div id="attempt" class="hud"></div>
-<div id="alert" class="hud"></div>
-<div id="inv" class="hud">
-  <div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
-</div>
-<div id="keys" class="hud"></div>
-<div id="tools" class="hud"></div>
-<div id="room" class="hud"></div>
+/* --------------------------------------------------------- long memory
+   Everything in MEM survives catches and page reloads. */
+const MK='hm2d.v1';
+const memBlank=()=>({catches:0,wins:0,entries:{},rooms:{},boarded:[],traps:[],cams:[],plans:[],front:0,decoys:{},heat:{},hours:new Array(24).fill(0)});
+let MEM=memBlank();
+try{const s=localStorage.getItem(MK);if(s){const o=JSON.parse(s);if(o&&typeof o==='object')MEM=Object.assign(MEM,o)}}catch(e){}
+if(!MEM.decoys||typeof MEM.decoys!=='object'||Array.isArray(MEM.decoys))MEM.decoys={};
+if(!MEM.heat||typeof MEM.heat!=='object'||Array.isArray(MEM.heat))MEM.heat={};
+if(!Array.isArray(MEM.hours))MEM.hours=new Array(24).fill(0);
+while(MEM.hours.length<24)MEM.hours.push(0);
+MEM.hours=MEM.hours.slice(0,24).map(v=>+v||0);
+if(!Array.isArray(MEM.plans))MEM.plans=[];
+if(!Array.isArray(MEM.boarded))MEM.boarded=[];
+if(!Array.isArray(MEM.traps))MEM.traps=[];
+if(!Array.isArray(MEM.cams))MEM.cams=[];
+if(!MEM.entries||typeof MEM.entries!=='object')MEM.entries={};
+if(!MEM.rooms||typeof MEM.rooms!=='object')MEM.rooms={};
+let memDirty=0,memSaveT=0;
+const save=()=>{try{localStorage.setItem(MK,JSON.stringify(MEM))}catch(e){}};
+const markMem=()=>{memDirty=1};
+function flushMem(dt){memSaveT-=dt;if(memDirty&&memSaveT<=0){memSaveT=2.5;save();memDirty=0}}
+const heatKey=(x,y)=>(x|0)>=0?((x|0)>>2)+','+((y|0)>>2):'0,0';
+const heatAt=(x,y)=>MEM.heat[heatKey(x,y)]||0;
+function roomHeat(name){const r=roomRect(name);if(!r)return 0;let s=0;for(let y=r[1];y<=r[3];y+=4)for(let x=r[0];x<=r[2];x+=4)s+=MEM.heat[heatKey(x,y)]||0;return s}
+function hourAffinity(){const h=((hour|0)+24)%24;let mx=1;for(const v of MEM.hours)if(v>mx)mx=v;return cl((MEM.hours[h]||0)/mx,0,1)}
+function addHeat(x,y,n){const k=heatKey(x,y);MEM.heat[k]=Math.min(999,(MEM.heat[k]||0)+n);markMem()}
 
-<div id="screen-menu" class="screen">
-  <h1>Hello<span>Mistral</span></h1>
-  <p>Your neighbor is hiding something in his basement. Break in. Don't get caught.</p>
-  <div class="controls">
-    <b>WASD</b><span>move</span>
-    <b>Mouse</b><span>look</span>
-    <b>Shift</b><span>sprint (loud)</span>
-    <b>C</b><span>crouch (quiet)</span>
-    <b>Space</b><span>jump</span>
-    <b>E</b><span>interact / hold for locks &amp; boards</span>
-    <b>LMB</b><span>throw held object (distraction)</span>
-    <b>Q</b><span>drop</span>
-    <b>M</b><span>mute</span>
-    <b>F</b><span>flashlight</span>
-    <b>Esc</b><span>pause</span>
-  </div>
-  <button id="btn-play">ENTER THE YARD</button>
-  <button id="btn-reset" class="ghost">Make him forget everything</button>
-  <p style="font-size:12px;opacity:.6">He learns which windows you use. He sets traps. He gets faster.<br>
-  His memory persists between sessions — until you wipe it.</p>
-  <div class="disclaimer">An original fan-made stealth game inspired by the “sneak into the
-  neighbor's house” genre. Not affiliated with, endorsed by, or using any assets from any
-  commercial game. Everything here is procedurally generated code and geometry.</div>
-</div>
+/* ----------------------------------------------------------- world state */
+const DR=[],DRM={},ITEMS=[],SPL=[],TRAPS=[],CAMS=[],PR=[],NZ=[];
+let hour=18,state='menu',msgT=0,tm=0,ZOOM=26,SHOW={bel:0,path:0},frontT=-99;
+MEM.boarded.forEach(k=>{const a=k.split(',').map(Number);if(G[a[1]])G[a[1]][a[0]]='X'});
+if(MEM.front)G[30][28]='L';
+function buildDoors(){
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  const c=G[y][x];
+  if((c==='D'||c==='L'||c==='B')&&!DRM[y*W+x]){const d={x,y,o:0,t:0,hold:0};DR.push(d);DRM[y*W+x]=d}
+ }
+}
+buildDoors();
+const doorClosed=(x,y)=>{const d=DRM[y*W+x];return !d||d.o<.35};
+[['can',29,12],['can',25,12],['vase',13,9],['vase',31,12],['vase',31,18],['chair',26,18],['chair',32,19],['box',40,27],['box',36,27],['box',20,25],['lamp',22,9]].forEach(a=>ITEMS.push({k:a[0],x:a[1]+.5,y:a[2]+.5,hx:a[1]+.5,hy:a[2]+.5,z:0,vx:0,vy:0,vz:0,fly:0,cl:0}));
+const CT=[
+ {id:'fridge',x:32.5,y:8.5,give:'red',t:.6,name:'fridge'},
+ {id:'desk',x:37.5,y:9.5,give:'blue',t:1,name:'desk drawer'},
+ {id:'toolbox',x:3.5,y:10.5,give:'pick',t:.6,name:'toolbox'}
+].map(c=>Object.assign(c,{done:0,seen:0}));
+MEM.traps.forEach(k=>{const a=k.split(',').map(Number);TRAPS.push({x:a[0],y:a[1],armed:1})});
+MEM.cams.forEach(k=>{const a=k.split(',').map(Number);CAMS.push({x:a[0]+.5,y:a[1]+.5,a:0,seeT:0,cd:0,sees:0})});
+const SECRET={x:46.5,y:26.5,got:0};
 
-<div id="screen-pause" class="screen hidden">
-  <h2>PAUSED</h2>
-  <p>He is still in there. Waiting.</p>
-  <button id="btn-resume">RESUME</button>
-</div>
+/* ------------------------------------------------------- pathfinding
+   A* (8-way, octile, no corner cutting, clearance costs) plus string
+   pulling. Broken windows are passable but expensive. */
+const solid=(x,y)=>{const c=(G[y|0]||[])[x|0];return c===undefined||c==='#'||c==='F'||c==='S'||c==='T'||c==='W'||c==='X'};
+const npass=(x,y)=>!solid(x,y);
+const ppass=(x,y)=>!solid(x,y)&&G[y|0][x|0]!=='L'&&G[y|0][x|0]!=='B';
+const trapAt=(x,y)=>TRAPS.some(t=>(t.x|0)===(x|0)&&(t.y|0)===(y|0));
+const NB=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.414],[1,-1,1.414],[-1,1,1.414],[-1,-1,1.414]];
+const AG=new Float32Array(W*H),AC=new Int32Array(W*H),AV=new Int32Array(W*H),AX=new Int32Array(W*H);
+let AS=0;
+class Heap{
+ constructor(){this.a=[]}
+ get n(){return this.a.length}
+ push(id,f){const a=this.a;a.push([f,id]);let i=a.length-1;while(i>0){const p=(i-1)>>1;if(a[p][0]<=a[i][0])break;[a[p],a[i]]=[a[i],a[p]];i=p}}
+ pop(){const a=this.a,t=a[0],l=a.pop();if(a.length){a[0]=l;let i=0;for(;;){let m=i,L=2*i+1,r=L+1;if(L<a.length&&a[L][0]<a[m][0])m=L;if(r<a.length&&a[r][0]<a[m][0])m=r;if(m===i)break;[a[m],a[i]]=[a[i],a[m]];i=m}}return t[1]}
+}
+function costAt(x,y){
+ let c=1;const ch=G[y][x];
+ if(ch==='D')c+=.4;if(ch==='L'||ch==='B')c+=2;if(ch==='w')c+=3.2;
+ let w=0;if(solid(x+1,y))w++;if(solid(x-1,y))w++;if(solid(x,y+1))w++;if(solid(x,y-1))w++;
+ c+=w*.2;if(trapAt(x,y))c+=14;return c;
+}
+function nearestFree(x,y,pass=npass){
+ x|=0;y|=0;
+ if(pass(x,y))return[x,y];
+ for(let r=1;r<12;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++)
+  if(Math.max(Math.abs(dx),Math.abs(dy))===r&&pass(x+dx,y+dy))return[x+dx,y+dy];
+ return[x,y];
+}
+const circFree=(x,y,r)=>npass(Math.floor(x-r),Math.floor(y-r))&&npass(Math.floor(x+r),Math.floor(y+r))&&npass(Math.floor(x-r),Math.floor(y+r))&&npass(Math.floor(x+r),Math.floor(y-r));
+const standableCell=(x,y,r=.29)=>npass(x,y)&&circFree(x+.5,y+.5,r);
+function nearestStandable(x,y){
+ let b=null,bd=1e9;
+ for(let r=0;r<=4;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+  if(r>0&&Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+  const nx=Math.floor(x+dx),ny=Math.floor(y+dy);
+  if(!standableCell(nx,ny,.28))continue;
+  const d=dist(x,y,nx+.5,ny+.5);if(d<bd){bd=d;b=[nx,ny]}
+ }
+ return b;
+}
+function clearLine(ax,ay,bx,by){
+ const d=Math.hypot(bx-ax,by-ay),n=Math.ceil(d/.2);
+ for(let i=1;i<=n;i++)if(!circFree(ax+(bx-ax)*i/n,ay+(by-ay)*i/n,.36))return 0;
+ return 1;
+}
+function findPath(sx,sy,tx,ty){
+ let s=nearestFree(sx,sy),t=nearestFree(tx,ty);
+ const id=(x,y)=>y*W+x,tid=id(t[0],t[1]),sid=id(s[0],s[1]);
+ AS++;
+ const oct=(x,y)=>{const dx=Math.abs(x-t[0]),dy=Math.abs(y-t[1]);return dx+dy-.586*Math.min(dx,dy)};
+ const h=new Heap();
+ AG[sid]=0;AV[sid]=AS;AC[sid]=-1;h.push(sid,oct(s[0],s[1]));
+ while(h.n){
+  const cur=h.pop(),cx=cur%W,cy=(cur/W)|0;
+  if(AX[cur]===AS)continue;
+  AX[cur]=AS;
+  if(cur===tid)break;
+  for(const d of NB){
+   const nx=cx+d[0],ny=cy+d[1];
+   if(!npass(nx,ny))continue;
+   if(d[0]&&d[1]&&(!npass(cx+d[0],cy)||!npass(cx,cy+d[1])))continue;
+   const ni=id(nx,ny);
+   if(AX[ni]===AS)continue;
+   const g=AG[cur]+d[2]*costAt(nx,ny);
+   if(AV[ni]!==AS||g<AG[ni]){AV[ni]=AS;AG[ni]=g;AC[ni]=cur;h.push(ni,g+oct(nx,ny))}
+  }
+ }
+ if(AV[tid]!==AS)return[];
+ const pts=[];let c=tid;
+ while(c!==sid){pts.unshift([c%W+.5,((c/W)|0)+.5]);c=AC[c]}
+ if(Math.floor(tx)===t[0]&&Math.floor(ty)===t[1]&&pts.length)pts[pts.length-1]=[tx,ty];
+ const out=[];let ax=sx,ay=sy,i=0;
+ while(i<pts.length){
+  let j=pts.length-1;
+  while(j>i&&!clearLine(ax,ay,pts[j][0],pts[j][1]))j--;
+  out.push(pts[j]);ax=pts[j][0];ay=pts[j][1];i=j+1;
+ }
+ return out;
+}
+function mvc(o,dx,dy,r,ok){
+ for(const a of[[dx,0],[0,dy]]){
+  const nx=o.x+a[0],ny=o.y+a[1];let f=1;
+  for(const q of[[-r,-r],[r,-r],[-r,r],[r,r]])if(!ok(Math.floor(nx+q[0]),Math.floor(ny+q[1]))){f=0;break}
+  if(f){o.x=nx;o.y=ny}
+ }
+}
+function los(ax,ay,bx,by){
+ const d=Math.hypot(bx-ax,by-ay),n=Math.ceil(d/.2);
+ for(let i=1;i<n;i++){
+  const x=ax+(bx-ax)*i/n,y=ay+(by-ay)*i/n,c=T(x,y);
+  if(c==='#'||c==='S'||c==='X'||c==='L'||c==='B'||(c==='D'&&doorClosed(x|0,y|0)))return 0;
+ }
+ return 1;
+}
+function walls(ax,ay,bx,by){
+ const d=Math.hypot(bx-ax,by-ay),n=Math.ceil(d/.3);let w=0,pv=0;
+ for(let i=1;i<n;i++){
+  const c=T(ax+(bx-ax)*i/n,ay+(by-ay)*i/n),b=c==='#'||c==='X'||c==='S'||c==='L'||c==='B';
+  if(b&&!pv)w++;pv=b;
+ }
+ return w;
+}
+/* A cell the neighbour can inspect from: never the inspected cell itself,
+   never inside another broken window, always with body clearance. */
+function inspectSpot(x,y,fx,fy,avoidBroken=true){
+ let b=null,bd=1e9;
+ for(let r=1;r<=3;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+  if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+  const nx=x+dx,ny=y+dy;
+  if(nx<1||ny<1||nx>=W-1||ny>=H-1)continue;
+  if(avoidBroken&&T(nx,ny)==='w')continue;
+  if(!standableCell(nx,ny,.29))continue;
+  const sc=Math.hypot(dx,dy)*1.2+Math.hypot(nx+.5-fx,ny+.5-fy)*.38;
+  if(sc<bd){bd=sc;b=[nx+.5,ny+.5]}
+ }
+ if(b)return b;
+ const q=nearestFree(x,y);
+ return[q[0]+.5,q[1]+.5];
+}
+function evictCell(x,y){
+ let ok=true;
+ for(const [o,pass] of [[N,npass],[P,ppass]]){
+  if(!o)continue;
+  if((o.x|0)===x&&(o.y|0)===y){
+   let q=null;
+   for(let r=1;r<12&&!q;r++)for(let dy=-r;dy<=r&&!q;dy++)for(let dx=-r;dx<=r&&!q;dx++){
+    if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+    if(dx===0&&dy===0)continue;
+    const nx=x+dx,ny=y+dy;
+    if(pass(nx,ny)&&circFree(nx+.5,ny+.5,o===P?.33:.29))q=[nx,ny];
+   }
+   if(q){o.x=q[0]+.5;o.y=q[1]+.5;if(o===N){N.path=[];N.repath=1}if(o===P){P.vx=P.vy=0;say('You scramble clear.',1.5)}}
+   else ok=false;
+  }
+ }
+ return ok;
+}
+function unstickEntity(o,pass,rad){
+ if(pass(o.x,o.y)&&circFree(o.x,o.y,rad))return false;
+ let q=null;
+ for(let r=1;r<12&&!q;r++)for(let dy=-r;dy<=r&&!q;dy++)for(let dx=-r;dx<=r&&!q;dx++){
+  if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+  const nx=(o.x|0)+dx,ny=(o.y|0)+dy;
+  if(pass(nx,ny)&&circFree(nx+.5,ny+.5,rad))q=[nx,ny];
+ }
+ if(!q)q=nearestFree(o.x,o.y,pass);
+ if(q){o.x=q[0]+.5;o.y=q[1]+.5;return true}
+ return false;
+}
+function forceUnstuck(){
+ if(state!=='play')return;
+ if(unstickEntity(N,npass,.29)){N.path=[];N.repath=1;N.stuck=0;N.jink=0}
+ if(unstickEntity(P,ppass,.33)){P.vx=P.vy=0;say('You squeeze free.',1.3)}
+}
 
-<div id="screen-caught" class="screen hidden">
-  <h1><span>CAUGHT</span></h1>
-  <p id="caught-sub"></p>
-  <div class="notes" id="caught-notes"></div>
-  <button id="btn-retry">TRY AGAIN</button>
-</div>
+/* ---------------------------------------------------------------- player */
+let P,N;
+let mouse={x:0,y:0},K={},cam={x:28,y:34};
+const bel=new Float32Array(W*H),vis=new Uint8Array(W*H);
+let visL=[],cone=[];
+function resetPlayer(){
+ P={x:28.5,y:37.5,vx:0,vy:0,aim:-PI/2,inv:[null,null,null,null],sel:0,pick:0,red:0,blue:0,hold:0,slow:0,trap:0,crouch:0,sprint:0,ft:0,tgt:null,lastCell:''};
+ cam.x=P.x;cam.y=P.y;
+}
+const held=()=>P.inv[P.sel];
+const invAdd=o=>{
+ if(!P.inv[P.sel]){P.inv[P.sel]=o;return P.sel}
+ const i=P.inv.indexOf(null);if(i<0)return -1;P.inv[i]=o;return i;
+};
+const invHas=o=>P.inv.includes(o);
+const need0=()=>({h:.3,t:.3,b:.4,e:.1,y:.3,l:.2,d:0,s:0});
+function resetN(){
+ N={
+  x:28.5,y:25.5,a:PI/2,st:'idle',label:'',mode:'idle',prio:0,script:[],si:0,stepT:0,path:[],
+  al:0,need:(N&&N.need)||need0(),recent:[],lastSeen:null,pvel:{x:0,y:0},pp:null,
+  chaseT:0,lost:0,throwCd:3,windup:0,sleeping:0,stun:0,done:0,sees:0,periph:0,
+  vt:0,ct:0,bt:0,spd:2.2,stuck:0,repath:0,jink:0,unT:0,heatT:0,needT:0,
+  searchT:0,searchN:0,cleared:[],carry:null,decoy:{},focus:null,lastWindow:null,goal:null,mass:0
+ };
+}
+const say=(s,t)=>{const m=$('msg');m.textContent=s;m.style.display='block';msgT=t||2.5};
+function noise(x,y,r,tag,ox,oy){NZ.push({x,y,r,t:0});if(NZ.length>40)NZ.shift();onNoise(x,y,r,tag,ox==null?x:ox,oy==null?y:oy)}
 
-<div id="screen-win" class="screen hidden">
-  <h1>THE <span>BASEMENT</span></h1>
-  <p id="win-sub"></p>
-  <p>You descend the humming stairs. Whatever he was hiding… you found it.</p>
-  <button id="btn-win-menu">PLAY AGAIN</button>
-</div>
+/* ------------------------------------------------------- neighbour scripts */
+const wait=(t,label,o)=>Object.assign({wait:t,label},o||{});
+const go=(x,y)=>({go:[x,y]});
+const fn=f=>({fn:f});
+const face=(x,y)=>{N.a=Math.atan2(y-N.y,x-N.x)};
 
-<script type="importmap">
-{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-</script>
-<script type="module" src="./src/main.js"></script>
-</body>
-</html>
+function windowFixScript(p,board){
+ const s=inspectSpot(p.x,p.y,N.x,N.y,true);
+ const label=board?'hammering boards over the window…':'replacing the glass…';
+ return[
+  go(s[0],s[1]),
+  wait(board?2.6:2.2,label,{face:[p.x+.5,p.y+.5]}),
+  fn(()=>{
+   const c=T(p.x,p.y);
+   if(board){
+    if(c!=='w'&&c!=='W')return;
+    if(!evictCell(p.x,p.y))return;
+    G[p.y][p.x]='X';
+    const k=winKey(p.x,p.y);if(!MEM.boarded.includes(k))MEM.boarded.push(k);
+    save();
+    say('He boarded up a window.');
+   }else{
+    if(c!=='w')return;
+    if(!evictCell(p.x,p.y))return;
+    G[p.y][p.x]='W';
+    say('He repaired a broken window.');
+   }
+   if(unstickEntity(N,npass,.29)){N.path=[];N.repath=1}
+  })
+ ];
+}
+function searchSweep(p){
+ const pts=(p.pts&&p.pts.length)?p.pts:[[p.x,p.y]];
+ const out=[];
+ for(const q of pts)out.push(go(q[0],q[1]),wait(.7,'sweeping the room',{sweep:1}));
+ if(!out.length)out.push(wait(1,'listening…',{sweep:1}));
+ return out;
+}
+const S={
+ startled:p=>[fn(()=>face(p.x,p.y)),wait(.5,'!?')],
+ noticing:p=>[fn(()=>face(P.x,P.y)),wait(.5,'who is that?')],
+ wake_up:p=>[wait(1.2,'zzz… what was that?'),fn(()=>{N.sleeping=0;if(p&&p.then)p.then()})],
+ investigate_noise:p=>[
+   go(p.x,p.y),wait(1.2,'hmm…',{sweep:1}),
+   fn(()=>{
+     const a=nearestFree(p.x,p.y);
+     const n=NB[(Math.random()*4)|0];
+     const q=nearestFree(a[0]+n[0]*2,a[1]+n[1]*2);
+     ins(S.peek_corner({x:q[0]+.5,y:q[1]+.5}));
+   })
+ ],
+ inspect_impact:p=>[go(p.x,p.y),wait(1.4,'what fell over?',{sweep:1}),fn(()=>{if(p.origin)run('follow_thrower',p.origin,2)})],
+ follow_thrower:p=>[go(p.x,p.y),wait(1.8,'somebody threw that!',{sweep:1}),fn(()=>{N.al=Math.max(N.al,.55)})],
+ peek_corner:p=>[go(p.x,p.y),wait(.9,'peeking round the corner',{sweep:1})],
+ check_window:p=>{
+   const s=inspectSpot(p.x,p.y,N.x,N.y,true);
+   return[go(s[0],s[1]),wait(1.6,'a window is broken!',{face:[p.x+.5,p.y+.5]}),fn(()=>{N.lastWindow={x:p.x,y:p.y,t:tm}})];
+ },
+ check_open_door:p=>{
+   const s=inspectSpot(p.x,p.y,N.x,N.y,false);
+   return[
+    go(s[0],s[1]),
+    wait(1.1,'who left this open?',{face:[p.x+.5,p.y+.5]}),
+    fn(()=>{const d=DRM[(p.y|0)*W+(p.x|0)];if(d&&(d.o>.35||d.t>0)){d.hold=3;d.t=0}}),
+    wait(.5,'closing it')
+   ];
+ },
+ close_door:p=>[go(p.x,p.y),wait(.7,'closing the door'),fn(()=>{const d=DRM[(p.y|0)*W+(p.x|0)];if(d){d.hold=3;d.t=0}})],
+ lost_player:p=>[go(p.x,p.y),wait(1.2,'where did he go?!',{sweep:1})],
+ search_last_seen:p=>[go(p.x,p.y),wait(1.5,'he was right here…',{sweep:1})],
+ search_predicted:p=>[go(p.x,p.y),wait(1.6,'he went this way…',{sweep:1})],
+ search_belief:p=>[go(p.x,p.y),wait(1.4,'checking the likeliest spot',{sweep:1})],
+ search_room:p=>[go(p.x,p.y),wait(1.5,'sweeping the room',{sweep:1})],
+ search_sweep:searchSweep,
+ search_scan:p=>[wait(1.8,'listening…',{sweep:1})],
+ search_closet:p=>[go(p.x,p.y),wait(1,'opens the wardrobe'),wait(.8,'nothing…')],
+ search_bed:p=>[go(p.x,p.y),wait(1,'looks under the bed'),wait(.8,'nothing…')],
+ search_tub:p=>[go(p.x,p.y),wait(.9,'checks behind the shower curtain'),wait(.7,'nothing…')],
+ search_yard:p=>[go(p.x,p.y),wait(1.5,'scanning the yard',{sweep:1})],
+ set_bear_trap:p=>[go(p.x,p.y),wait(2.5,'setting a bear trap…'),fn(()=>{
+   let tx=p.x|0,ty=p.y|0;
+   if(!standableCell(tx,ty,.2)){const q=nearestStandable(tx+.5,ty+.5);if(q){tx=q[0];ty=q[1]}}
+   if(trapAt(tx,ty))return;
+   addTrap(tx,ty);const k=winKey(tx,ty);if(!MEM.traps.includes(k))MEM.traps.push(k);save();
+ })],
+ board_window:p=>windowFixScript(p,true),
+ repair_window:p=>windowFixScript(p,false),
+ lock_front:p=>{
+   const s=inspectSpot(28,30,N.x,N.y,false);
+   return[
+    go(s[0],s[1]),wait(2,'changing the front door lock…'),
+    fn(()=>{
+     if(!evictCell(28,30))return;
+     G[30][28]='L';MEM.front=1;
+     if(DRM[30*W+28]){DRM[30*W+28].o=0;DRM[30*W+28].t=0}
+     save();say('He changed the front door lock.');
+    })
+   ];
+ },
+ install_camera:p=>[go(p.x,p.y),wait(3,'mounting a security camera…'),fn(()=>{
+   CAMS.push({x:p.x,y:p.y,a:0,seeT:0,cd:0,sees:0});
+   const k=winKey(p.x|0,p.y|0);if(!MEM.cams.includes(k))MEM.cams.push(k);
+   save();say('He installed a camera.');
+ })],
+ inspect_container:p=>[
+   go(p.x,p.y),wait(1.5,'the '+p.c.name+' has been searched…'),
+   fn(()=>{
+     if(!p.c.done)return;
+     p.c.seen=1;N.need.s=cl(N.need.s+.5,0,1);N.al=Math.max(N.al,.55);N.done++;
+     say('He noticed the '+p.c.name+' had been searched.',2.2);
+   })
+ ],
+ pick_up_litter:p=>[go(p.x,p.y),wait(.8,'picking this up'),fn(()=>{const i=SPL.indexOf(p.s);if(i>=0)SPL.splice(i,1)})],
+ return_item:p=>[
+   go(p.i.x,p.i.y),wait(.8,'who left this here?'),
+   fn(()=>{if(!p.i.fly&&!invHas(p.i)){p.i.x=-9;p.i.y=-9}}),
+   go(p.i.hx,p.i.hy),wait(.6,'puts it back'),
+   fn(()=>{if(!invHas(p.i)&&!p.i.fly){p.i.x=p.i.hx;p.i.y=p.i.hy}})
+ ],
+ mop_splat:p=>[go(p.x,p.y),wait(3,'mopping up the mess…'),fn(()=>{const i=SPL.indexOf(p.s);if(i>=0)SPL.splice(i,1)})],
+ calm_down:p=>[wait(2,'must have been the wind…'),fn(()=>{N.al=0})],
+ grumble:p=>[wait(1.5,'grumble…')],
+ guard_basement:p=>[go(42.5,27.5),wait(7,'keeping watch on the basement',{sweep:1})],
+ guard_obj:p=>[go(p.x,p.y),wait(p.t||8,p.label||'watching this spot',{sweep:1})],
+ patrol_room:p=>[go(p.x,p.y),wait(p.t||2.4,p.label||'checking the room',{sweep:1})],
+ ambush_door:p=>[go(p.x,p.y),wait(7,'waiting by the door for you…',{face:[p.fx,p.fy]})],
+ patrol_perimeter:p=>[go(p.a[0],p.a[1]),wait(1.2,'scanning the yard',{sweep:1}),go(p.b[0],p.b[1]),wait(1.2,'scanning the yard',{sweep:1})],
+ check_traps:p=>[go(p.x,p.y),wait(1,'checking the trap'),fn(()=>{const t=TRAPS.find(q=>q.x===p.x&&q.y===p.y);if(t)t.armed=1})],
+ wipe_face:p=>[wait(1.4,'TOMATO! ugh!')]
+};
+const CHASE_STATES=['chase','chase_throw','chase_cutoff','chase_route','lunge'];
+const STATE_COUNT=TASKS.length+Object.keys(S).length+CHASE_STATES.length;
+
+function run(name,p,prio){
+ if(!S[name]){console.warn('unknown neighbour script:',name);return}
+ N.st=name;N.script=S[name](p||{});N.si=0;N.stepT=0;N.path=[];N.prio=prio||0;
+ N.spd=([2.2,2.7,3.5,3.7,4.2][cl(N.prio,0,4)]||2.2)+MEM.catches*.12;
+ N.sleeping=(N.sleeping&&name==='sleep')?1:0;
+ N.stuck=0;N.jink=0;N.repath=0;
+}
+const ins=steps=>N.script.splice(N.si+1,0,...steps);
+function endState(){
+ N.script=[];N.prio=0;N.sleeping=0;N.focus=null;
+ if(N.mode==='search')searchNext();
+ else{N.mode='idle';pickTask()}
+}
+function turn(t,dt,s){const d=Math.atan2(Math.sin(t-N.a),Math.cos(t-N.a));N.a+=cl(d,-s*dt,s*dt)}
+function follow(dt,sp){
+ if(!N.path.length)return 1;
+ const w=N.path[0],dx=w[0]-N.x,dy=w[1]-N.y,l=Math.hypot(dx,dy);
+ if(l<.24){N.path.shift();N.stuck=0;return !N.path.length}
+ const ox=N.x,oy=N.y;
+ mvc(N,dx/l*sp*dt,dy/l*sp*dt,.3,npass);
+ turn(Math.atan2(dy,dx),dt,10);
+ if(Math.hypot(N.x-ox,N.y-oy)<sp*dt*.25){
+  N.stuck+=dt;
+  if(N.stuck>.3){
+   N.stuck=0;N.repath=1;N.jink=(N.jink||0)+1;
+   const sgn=(N.jink%2)?1:-1;
+   mvc(N,-dy/l*sp*dt*4*sgn,dx/l*sp*dt*4*sgn,.3,npass);
+  }
+ }else N.stuck=0;
+ return 0;
+}
+function scriptUpdate(dt){
+ const s=N.script[N.si];
+ if(!s){endState();return}
+ if(s.go){
+  s.t=(s.t||0)+dt;
+  if(!s.p||N.repath){
+   s.p=1;N.repath=0;
+   let gx=s.go[0],gy=s.go[1];
+   if(!npass(gx|0,gy|0)){const q=nearestFree(gx,gy);gx=q[0]+.5;gy=q[1]+.5;s.go=[gx,gy]}
+   N.path=findPath(N.x,N.y,gx,gy);
+   if(!N.path.length&&dist(N.x,N.y,gx,gy)>1.2){N.si++;return}
+  }
+  if(follow(dt,N.spd)){N.si++;N.path=[];N.jink=0}
+  else if(s.t>25||N.jink>5){N.si++;N.path=[];N.repath=0;N.jink=0;N.stuck=0}
+ }else if(s.wait!=null){
+  N.stepT+=dt;N.label=s.label||'';
+  if(s.face)turn(Math.atan2(s.face[1]-N.y,s.face[0]-N.x),dt,6);
+  else if(s.sweep)N.a+=Math.sin(N.stepT*3)*dt*2.4;
+  if(s.eff)for(const k in s.eff)N.need[k]=cl(N.need[k]+s.eff[k]*dt/s.wait,0,1);
+  if(N.stepT>=s.wait){N.stepT=0;N.si++}
+ }else if(s.fn){s.fn();N.si++}
+}
+
+/* --------------------------------------------------------- perception */
+function onNoise(x,y,r,tag,ox,oy){
+ if(state!=='play'||N.mode==='chase'||N.stun>0)return;
+ const d=dist(N.x,N.y,x,y);
+ const eff=r*Math.pow(.72,walls(N.x,N.y,x,y))*(N.sleeping?.5:1)*(1+hourAffinity()*.18);
+ if(d>eff)return;
+ N.need.s=cl(N.need.s+.11,0,1);
+ const f=N.focus;
+ if(f&&tm-f.t<2.8&&dist(f.x,f.y,x,y)<2.4&&N.prio<=2&&N.script.length){
+  for(let i=N.si;i<N.script.length;i++){const st=N.script[i];if(st.go){st.go=[x,y];st.p=0;break}}
+  f.x=x;f.y=y;f.t=tm;f.tag=tag;
+  return;
+ }
+ let name='investigate_noise',p={x,y},origin={x:ox==null?x:ox,y:oy==null?y:oy};
+ const th=P.throwO;
+ if(tag==='impact'||tag==='glass'){
+  const k=heatKey(x,y);
+  const learned=MEM.decoys[k]||0;
+  if(th&&tm-th.t<5){
+   MEM.decoys[k]=Math.min(9,learned+1);markMem();
+   if(learned>=3||MEM.catches>=2){name='follow_thrower';p={x:th.x,y:th.y,origin}}
+   else{name='inspect_impact';p={x,y,origin}}
+  }
+  if(tag==='glass'&&name!=='follow_thrower'){name='check_window';p={x:x|0,y:y|0}}
+ }else if(tag==='door'){name='check_open_door';p={x:x|0,y:y|0}}
+ if(N.sleeping){run('wake_up',{then:()=>run(name,p,2)},2);return}
+ if(N.prio>2)return;
+ if(N.mode==='search')N.mode='idle';
+ N.focus={x,y,t:tm,tag};
+ run(name,p,2);
+}
+function percept(dt){
+ N.vt-=dt;if(N.vt>0)return;
+ N.vt=.1;
+ const dx=P.x-N.x,dy=P.y-N.y,d=Math.hypot(dx,dy),ang=Math.atan2(dy,dx);
+ const df=Math.abs(Math.atan2(Math.sin(ang-N.a),Math.cos(ang-N.a)));
+ const heatBoost=Math.min(.25,heatAt(P.x,P.y)*.012);
+ const Rg=(N.sleeping?2.5:11+Math.min(3,MEM.catches*.7)+hourAffinity()*1.6+heatBoost)*(P.crouch?.6:1)*(P.sprint?1.2:1);
+ N.sees=(d<Rg&&(df<.95||d<1.8)&&los(N.x,N.y,P.x,P.y))?1:0;
+ N.periph=(!N.sees&&!N.sleeping&&d<5.5&&df<1.7&&los(N.x,N.y,P.x,P.y))?1:0;
+ N.dist=d;
+ N.ct-=.1;
+ if(N.ct<=0){N.ct=.15;castCone(Rg>11?11+(N.sleeping?0:2):Rg)}
+}
+function castCone(R){
+ cone=[];
+ for(const c of visL)vis[c]=0;
+ visL=[];
+ const rays=44;
+ for(let i=0;i<=rays;i++){
+  const a=N.a-.95+1.9*i/rays;
+  let r=.3,ex=N.x,ey=N.y;
+  for(;r<R;r+=.3){
+   const x=N.x+Math.cos(a)*r,y=N.y+Math.sin(a)*r,c=T(x,y);
+   if(c==='#'||c==='S'||c==='X'||c==='L'||c==='B'||(c==='D'&&doorClosed(x|0,y|0)))break;
+   ex=x;ey=y;
+   const id=(y|0)*W+(x|0);
+   if(!vis[id]){vis[id]=1;visL.push(id)}
+  }
+  cone.push([ex,ey]);
+ }
+}
+
+/* ------------------------------------------------------- belief + search */
+function nearestFreeP(x,y){
+ x|=0;y|=0;
+ if(ppass(x,y))return[x,y];
+ for(let r=1;r<7;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++)
+  if(Math.max(Math.abs(dx),Math.abs(dy))===r&&ppass(x+dx,y+dy))return[x+dx,y+dy];
+ return[x|0,y|0];
+}
+function norm(){
+ let s=0;for(let i=0;i<bel.length;i++)s+=bel[i];
+ N.mass=s;
+ if(s>1e-6)for(let i=0;i<bel.length;i++)bel[i]/=s;
+}
+function playerGoal(){
+ if(!P.pick)return{x:CT[2].x,y:CT[2].y,name:'the shed'};
+ if(!P.red)return{x:CT[0].x,y:CT[0].y,name:'the kitchen'};
+ if(!P.blue)return{x:CT[1].x,y:CT[1].y,name:'the study'};
+ return{x:SECRET.x,y:SECRET.y,name:'the vault'};
+}
+function seedBelief(){
+ bel.fill(0);
+ const ls=N.lastSeen||{x:P.x,y:P.y};
+ for(let t=0;t<=3.2;t+=.4){
+  const x=ls.x+N.pvel.x*t,y=ls.y+N.pvel.y*t,c=nearestFreeP(x,y);
+  bel[c[1]*W+c[0]]+=t===0?1.2:.65;
+ }
+ const g=playerGoal();
+ const path=findPath(ls.x,ls.y,g.x,g.y);
+ let added=0;
+ for(const q of path){bel[(q[1]|0)*W+(q[0]|0)]+=.35;if(++added>12)break}
+ const gc=nearestFreeP(g.x,g.y);
+ bel[gc[1]*W+gc[0]]+=.5;
+ norm();
+}
+function diffuse(){
+ const nb=new Float32Array(W*H);
+ for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+  const v=bel[y*W+x];
+  if(v<1e-5)continue;
+  const o=[];
+  for(const d of NB)if(ppass(x+d[0],y+d[1]))o.push((y+d[1])*W+x+d[0]);
+  nb[y*W+x]+=v*.45;
+  for(const q of o)nb[q]+=v*.55/o.length;
+ }
+ bel.set(nb);
+ for(const c of visL)bel[c]=0;
+ norm();
+}
+function beliefSpots(n=4){
+ const arr=[];
+ for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){
+  let s=0;
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)s+=bel[(y+dy)*W+x+dx];
+  if(s<=0||!npass(x,y))continue;
+  let pen=1;
+  for(const c of N.cleared)if(dist(x+.5,y+.5,c[0],c[1])<2.6){pen=.22;break}
+  const sc=s*pen/(1+dist(N.x,N.y,x+.5,y+.5)*.06);
+  arr.push({x:x+.5,y:y+.5,sc});
+ }
+ arr.sort((a,b)=>b.sc-a.sc);
+ const out=[];
+ for(const a of arr){
+  if(out.some(o=>dist(o.x,o.y,a.x,a.y)<3))continue;
+  out.push(a);
+  if(out.length>=n)break;
+ }
+ return out;
+}
+function bestBelief(){const b=beliefSpots(1)[0];return b?[b.x,b.y]:null}
+function roomSweepPoints(x,y){
+ const r=roomRect(roomOf(x,y));
+ const pts=[];
+ if(r){
+  for(const fx of [.2,.5,.8])for(const fy of [.2,.5,.8]){
+   const q=nearestStandable(r[0]+(r[2]-r[0])*fx,r[1]+(r[3]-r[1])*fy);
+   if(q&&!pts.some(p=>dist(p[0],p[1],q[0]+.5,q[1]+.5)<1.8))pts.push([q[0]+.5,q[1]+.5]);
+  }
+ }
+ pts.sort((a,b)=>dist(N.x,N.y,a[0],a[1])-dist(N.x,N.y,b[0],b[1]));
+ return pts.slice(0,4);
+}
+function searchNext(){
+ if(N.searchT>30||(N.mass||0)<.02){N.mode='idle';run('calm_down',{},1);return}
+ const spots=beliefSpots(6);
+ let b=null;
+ for(const s of spots){
+  const q=nearestFree(s.x,s.y);
+  if(!npass(q[0],q[1]))continue;
+  const p=findPath(N.x,N.y,s.x,s.y);
+  if(p.length||dist(N.x,N.y,s.x,s.y)<2.5){b=[s.x,s.y];break}
+ }
+ if(!b){N.mode='idle';run('calm_down',{},1);return}
+ N.cleared.push([b[0],b[1]]);if(N.cleared.length>8)N.cleared.shift();
+ let name='search_belief';
+ const rm=roomOf(b[0],b[1]);
+ if(N.searchN++===0)name='search_predicted';
+ if(rm==='Yard')name='search_yard';
+ else if(rm==='Bedroom'&&dist(b[0],b[1],20.5,19.5)<4){name='search_closet';const q=inspectSpot(20,18,N.x,N.y,false);b=q}
+ else if(rm==='Bedroom'&&dist(b[0],b[1],15.5,27.5)<4){name='search_bed';const q=inspectSpot(15,27,N.x,N.y,false);b=q}
+ else if(rm==='Bathroom'&&dist(b[0],b[1],37.5,20.5)<3.5){name='search_tub';const q=inspectSpot(37,20,N.x,N.y,false);b=q}
+ else if(N.searchN%4===0)name='search_scan';
+ else if(N.searchN%2===0)name='search_room';
+ if(name==='search_room'){
+  const pts=roomSweepPoints(b[0],b[1]);
+  if(pts.length>1){run('search_sweep',{pts},3);return}
+ }
+ run(name,{x:b[0],y:b[1]},3);
+}
+
+/* ----------------------------------------------------------- chase */
+function startChase(){
+ if(N.mode==='chase')return;
+ N.mode='chase';N.st='chase';N.prio=4;N.script=[];N.path=[];
+ N.chaseT=0;N.lost=0;N.sleeping=0;N.label='GOTCHA!';N.throwCd=Math.min(N.throwCd,1.5);
+ addHeat(P.x,P.y,2);MEM.hours[hour|0]=(MEM.hours[hour|0]||0)+1;save();
+ say('He spotted you! RUN!',2);
+}
+function loseChase(){
+ N.mode='search';N.searchT=0;N.searchN=0;N.cleared=[];N.focus=null;
+ seedBelief();
+ const t=N.lastSeen||{x:N.x,y:N.y};
+ run('lost_player',{x:t.x,y:t.y},3);
+}
+function interceptPoint(){
+ const g=playerGoal();
+ const path=findPath(P.x,P.y,g.x,g.y);
+ let d=0,px=P.x,py=P.y;
+ for(const q of path){
+  d+=dist(px,py,q[0],q[1]);px=q[0];py=q[1];
+  if(d>6.5)return q;
+ }
+ return[g.x,g.y];
+}
+function nThrow(){
+ const k=N.carry||'box';
+ const T0=Math.max(.25,N.dist/11);
+ const px=P.x+P.vx*T0,py=P.y+P.vy*T0;
+ const dx=px-N.x,dy=py-N.y,l=Math.hypot(dx,dy)||1;
+ PR.push({k,x:N.x,y:N.y,z:1.5,vx:dx/T0,vy:dy/T0,vz:(0-1.5+.5*12*T0*T0)/T0,own:'n',t:0});
+}
+function chaseUpdate(dt){
+ N.chaseT+=dt;
+ const d=dist(N.x,N.y,P.x,P.y);
+ const sp=4.2+MEM.catches*.25+Math.min(.8,N.chaseT*.05)+(d>9?.8:0);
+ N.goal=playerGoal();
+ if(N.windup>0){
+  N.windup-=dt;N.st='chase_throw';N.label='winds up…';
+  turn(Math.atan2(P.y-N.y,P.x-N.x),dt,12);
+  if(N.windup<=0)nThrow();
+  return;
+ }
+ if(N.sees){
+  N.lost=0;N.lastSeen={x:P.x,y:P.y};N.throwCd-=dt;
+  const a=Math.atan2(P.y-N.y,P.x-N.x),walk=clearLine(N.x,N.y,P.x,P.y);
+  if(d<2.6&&walk){
+   N.st='lunge';N.label='LUNGE!';
+   mvc(N,Math.cos(a)*sp*1.25*dt,Math.sin(a)*sp*1.25*dt,.3,npass);
+   turn(a,dt,14);N.path=[];
+  }else if(N.throwCd<=0&&d>3.5&&d<11&&los(N.x,N.y,P.x,P.y)){
+   N.windup=.4;N.throwCd=Math.max(1.8,3.6-MEM.catches*.3);
+   N.carry=Math.random()<.5?'tomato':'box';
+  }else if(d<6&&walk){
+   N.st='chase';N.label='get back here!';
+   mvc(N,Math.cos(a)*sp*dt,Math.sin(a)*sp*dt,.3,npass);
+   turn(a,dt,12);N.path=[];
+  }else{
+   N.st=walk?'chase_cutoff':'chase_route';
+   N.label=walk?'cutting you off':'going around!';
+   N.bt-=dt;
+   if(N.bt<=0||!N.path.length){
+    N.bt=.3;
+    let q;
+    if(walk)q=nearestFree(P.x+P.vx*(d/sp),P.y+P.vy*(d/sp));
+    else{const ip=interceptPoint();q=nearestFree(ip[0],ip[1])}
+    N.path=findPath(N.x,N.y,q[0]+.5,q[1]+.5);
+   }
+   follow(dt,sp);
+   if(N.jink>6){N.jink=0;N.path=[];N.repath=1}
+  }
+ }else{
+  N.lost+=dt;N.st='chase_cutoff';N.label='where did he go?';N.bt-=dt;
+  if(N.bt<=0||!N.path.length){
+   N.bt=.45;
+   const t=Math.min(N.lost+.6,3.2);
+   const ls=N.lastSeen||{x:P.x,y:P.y};
+   let tx=ls.x+N.pvel.x*t,ty=ls.y+N.pvel.y*t;
+   if(N.lost>1.4){
+    const g=playerGoal();
+    const p=findPath(tx,ty,g.x,g.y);
+    if(p.length){const q=p[Math.min(3,p.length-1)];tx=q[0];ty=q[1]}
+    else{tx=g.x;ty=g.y}
+   }
+   const q=nearestFree(tx,ty);
+   N.path=findPath(N.x,N.y,q[0]+.5,q[1]+.5);
+  }
+  follow(dt,sp);
+  if(N.lost>5.5){loseChase();return}
+ }
+ if(d<.8)caught();
+}
+
+/* ---------------------------------------------------- projectiles & items */
+function throwHeld(){
+ const i=held();
+ if(!i||state!=='play')return;
+ P.inv[P.sel]=null;
+ i.fly=1;
+ P.throwO={x:P.x,y:P.y,t:tm};
+ const a=P.aim;
+ PR.push({k:i.k,item:i,x:P.x+Math.cos(a)*.5,y:P.y+Math.sin(a)*.5,z:1.1,vx:Math.cos(a)*11,vy:Math.sin(a)*11,vz:4.2,own:'p',t:0});
+}
+function land(p,x,y){
+ const i=p.item;
+ if(p.k==='tomato'){
+  SPL.push({x,y,k:'splat'});
+  if(p.own==='p')noise(x,y,8,'impact',P.throwO?P.throwO.x:x,P.throwO?P.throwO.y:y);
+ }else if(p.k==='vase'){
+  SPL.push({x,y,k:'shards'});
+  if(p.own==='p')noise(x,y,12,'impact',P.throwO?P.throwO.x:x,P.throwO?P.throwO.y:y);
+ }else{
+  let it=i;
+  if(!it){it={k:p.k,x,y,hx:x,hy:y,z:0,fly:0,vx:0,vy:0,vz:0};ITEMS.push(it)}
+  it.x=x;it.y=y;it.fly=0;it.z=0;
+  if(p.own==='p')noise(x,y,p.k==='can'?10:11,'impact',P.throwO?P.throwO.x:x,P.throwO?P.throwO.y:y);
+ }
+}
+function updPR(dt){
+ for(const p of PR){
+  p.t+=dt;if(p.dead)continue;
+  const nx=p.x+p.vx*dt,ny=p.y+p.vy*dt;
+  p.vz-=12*dt;p.z+=p.vz*dt;
+  const c=T(nx,ny);
+  if(c==='W'){
+   G[ny|0][nx|0]='w';
+   noise(nx,ny,16,'glass',P.throwO?P.throwO.x:nx,P.throwO?P.throwO.y:ny);
+   say('CRASH! Glass breaks.',1.5);p.dead=1;land(p,p.x,p.y);continue;
+  }
+  if(c==='#'||c==='S'||c==='F'||c==='X'||c==='L'||c==='B'||(c==='T'&&p.z<.6)||(c==='D'&&doorClosed(nx|0,ny|0))){
+   p.dead=1;land(p,p.x,p.y);continue;
+  }
+  if(p.own==='p'&&dist(nx,ny,N.x,N.y)<.55&&p.z<1.9){
+   p.dead=1;
+   if(p.k==='tomato'||p.k==='vase')SPL.push({x:nx,y:ny,k:p.k==='vase'?'shards':'splat'});
+   else land(p,nx,ny);
+   N.stun=1.5;N.al=1;N.sleeping=0;N.lastSeen={x:P.x,y:P.y};
+   run('wipe_face',{},2);say('Direct hit!',1.2);N.prio=2;noise(nx,ny,6,'hit');
+   if(N.mode!=='chase'&&los(N.x,N.y,P.x,P.y))startChase();
+   continue;
+  }
+  if(p.own==='n'&&dist(nx,ny,P.x,P.y)<.5&&p.z<1.8){
+   p.dead=1;P.slow=1.8;say('He hit you with a '+p.k+'!',2);
+   if(p.k==='tomato')SPL.push({x:nx,y:ny,k:'splat'});else land(p,nx,ny);
+   continue;
+  }
+  p.x=nx;p.y=ny;
+  if(p.z<=0){p.dead=1;land(p,p.x,p.y)}
+ }
+ for(let i=PR.length-1;i>=0;i--)if(PR[i].dead&&PR[i].t>.05)PR.splice(i,1);
+}
+function addTrap(x,y){TRAPS.push({x:x|0,y:y|0,armed:1})}
+function updTraps(){
+ for(const t of TRAPS)if(t.armed&&dist(P.x,P.y,t.x+.5,t.y+.5)<.5){
+  t.armed=0;P.trap=2.4;noise(P.x,P.y,20,'trap');
+  say('BEAR TRAP! He heard that.',2.5);
+ }
+}
+
+/* ------------------------------------------------------------ player */
+function findTarget(){
+ let b=null,bd=1.6;
+ const invFree=P.inv.indexOf(null)>=0;
+ for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+  const x=(P.x|0)+dx,y=(P.y|0)+dy,c=T(x,y);
+  if(c==='L'&&P.pick){const d=dist(P.x,P.y,x+.5,y+.5);if(d<bd){bd=d;b={k:'lock',x,y,t:2,l:'Pick the lock (hold E)'}}}
+  if(c==='B'&&P.red&&P.blue){const d=dist(P.x,P.y,x+.5,y+.5);if(d<bd){bd=d;b={k:'lock',x,y,t:2.2,l:'Unlock the basement (hold E)'}}}
+ }
+ for(const c of CT){
+  if(c.done)continue;
+  const d=dist(P.x,P.y,c.x,c.y);
+  if(d<bd){bd=d;b={k:'ct',o:c,t:c.t,l:'Search the '+c.name+' (hold E)'}}
+ }
+ if(invFree)for(const p of PL){
+  if(p.n<=0)continue;
+  const d=dist(P.x,P.y,p.x+.5,p.y+.5);
+  if(d<bd){bd=d;b={k:'plant',o:p,t:.35,l:'Pick a tomato (hold E)'}}
+ }
+ for(const t of TRAPS){
+  const d=dist(P.x,P.y,t.x+.5,t.y+.5);
+  if(d<bd&&t.armed){bd=d;b={k:'trap',o:t,t:.9,l:'Disarm the trap (hold E)'}}
+ }
+ if(invFree)for(const i of ITEMS){
+  if(i.fly||i.x<0||invHas(i))continue;
+  const d=dist(P.x,P.y,i.x,i.y);
+  if(d<bd){bd=d;b={k:'item',o:i,t:0,l:'E: pick up the '+i.k}}
+ }
+ return b;
+}
+function doTarget(t){
+ if(t.k==='lock'){
+  G[t.y][t.x]='D';
+  say('Unlocked!');
+  noise(P.x,P.y,t.t>2?9:7,'pick');
+  if(t.x===28&&t.y===30)MEM.front=0;
+ }else if(t.k==='ct'){
+  t.o.done=1;t.o.seen=0;
+  if(t.o.give==='pick')P.pick=1;else P[t.o.give]=1;
+  say('Found the '+(t.o.give==='pick'?'LOCKPICK':t.o.give.toUpperCase()+' KEY')+'!',3);
+  noise(P.x,P.y,5,'rummage');
+  addHeat(P.x,P.y,1);
+ }else if(t.k==='plant'){
+  if(P.inv.indexOf(null)<0){say('Inventory full! Press Q to drop something.',2);return}
+  t.o.n--;
+  const s=invAdd({k:'tomato',x:-9,y:-9,z:0,fly:0});
+  if(s<0)return;
+  P.sel=s;say('Tomato in slot '+(s+1)+'! Click to throw it at a window.',2);
+ }else if(t.k==='trap'){
+  t.o.armed=0;
+  const i=TRAPS.indexOf(t.o);if(i>=0)TRAPS.splice(i,1);
+  const k=winKey(t.o.x,t.o.y);MEM.traps=MEM.traps.filter(q=>q!==k);save();
+  say('Trap disarmed.',1.5);
+ }else if(t.k==='item'){
+  const s=invAdd(t.o);
+  if(s<0){say('Inventory full! Press Q to drop something.',2);return}
+  t.o.x=-9;t.o.y=-9;P.sel=s;
+  say('Picked up the '+t.o.k+' (slot '+(s+1)+').',1.5);
+ }
+}
+function playerUpdate(dt){
+ P.crouch=K.c?1:0;P.sprint=K.shift&&!P.crouch?1:0;
+ const ix=((K.d||K.arrowright)?1:0)-((K.a||K.arrowleft)?1:0);
+ const iy=((K.s||K.arrowdown)?1:0)-((K.w||K.arrowup)?1:0);
+ const l=Math.hypot(ix,iy);
+ const sp=(P.crouch?1.7:P.sprint?5.4:3.3)*(P.slow>0?.45:1);
+ if(P.slow>0)P.slow-=dt;
+ P.vx=P.vy=0;
+ if(P.trap>0)P.trap-=dt;
+ else if(l){
+  P.vx=ix/l*sp;P.vy=iy/l*sp;
+  const px=P.x,py=P.y;
+  mvc(P,P.vx*dt,P.vy*dt,.34,ppass);
+  if(Math.hypot(P.x-px,P.y-py)>sp*dt*.15){
+   P.ft-=dt;
+   if(P.ft<=0){P.ft=.36;noise(P.x,P.y,P.crouch?1.6:P.sprint?10:5,'step')}
+  }
+ }
+ P.aim=Math.atan2((mouse.y-innerHeight/2)/ZOOM+cam.y-P.y,(mouse.x-innerWidth/2)/ZOOM+cam.x-P.x);
+ if(!ppass(P.x,P.y)||!circFree(P.x,P.y,.33))unstickEntity(P,ppass,.33);
+ const c=T(P.x,P.y);
+ if(c==='w'&&P.lastCell!==winKey(P.x|0,P.y|0)){
+  const k=winKey(P.x|0,P.y|0);
+  MEM.entries[k]=(MEM.entries[k]||0)+1;
+  addHeat(P.x,P.y,2);
+  if(!MEM.boarded.includes(k)&&!MEM.plans.some(p=>p.t==='board'&&p.x===(P.x|0)&&p.y===(P.y|0)))MEM.plans.push({t:'board',x:P.x|0,y:P.y|0});
+  if(MEM.entries[k]>=2&&!MEM.traps.includes(k)&&!MEM.plans.some(p=>p.t==='trap'&&p.x===(P.x|0)&&p.y===(P.y|0)))MEM.plans.push({t:'trap',x:P.x|0,y:P.y|0});
+  save();
+ }
+ if(c==='D'&&P.x>27.6&&P.x<28.4&&P.y>29.6&&P.y<30.4){
+  const k=winKey(28,30);
+  if(tm-frontT>5){MEM.entries[k]=(MEM.entries[k]||0)+1;frontT=tm;addHeat(P.x,P.y,1);markMem()}
+ }
+ P.lastCell=winKey(P.x|0,P.y|0);
+ MEM.rooms[roomOf(P.x,P.y)]=(MEM.rooms[roomOf(P.x,P.y)]||0)+(N.sees?dt:0);
+ if(N.sees)markMem();
+ P.tgt=findTarget();
+ if(P.tgt&&P.tgt.t>0&&K.e){
+  P.hold+=dt;
+  if(P.hold>=P.tgt.t){doTarget(P.tgt);P.hold=0}
+ }else P.hold=0;
+ updTraps();
+ if(!SECRET.got&&dist(P.x,P.y,SECRET.x,SECRET.y)<.9){SECRET.got=1;win()}
+}
+
+/* ------------------------------------------------------- doors, cameras */
+function updDoors(dt){
+ for(const d of DR){
+  const ch=G[d.y][d.x];
+  if(ch==='L'||ch==='B'){d.o=0;continue}
+  if(d.hold>0)d.hold-=dt;
+  const nearP=dist(P.x,P.y,d.x+.5,d.y+.5)<1.3&&ppass(d.x,d.y);
+  const nearN=dist(N.x,N.y,d.x+.5,d.y+.5)<1.5;
+  if(nearP||(nearN&&!(d.hold>0))){
+   if(d.o<.35&&nearP&&!nearN&&Math.random()<.5)noise(d.x+.5,d.y+.5,P.crouch?2:4,'door');
+   d.t=1.6;
+  }else d.t-=dt;
+  d.o+=((d.t>0?1:0)-d.o)*Math.min(1,dt*7);
+ }
+}
+const CAMR=6.5,CAMCONE=.7;
+function losCam(ax,ay,bx,by){
+ const d=Math.hypot(bx-ax,by-ay),n=Math.ceil(d/.2);
+ for(let i=1;i<n;i++){
+  const x=ax+(bx-ax)*i/n,y=ay+(by-ay)*i/n,c=T(x,y);
+  if(c==='#'||c==='S'||c==='X'||c==='L'||c==='B'||c==='T'||c==='W'||(c==='D'&&doorClosed(x|0,y|0)))return 0;
+ }
+ return 1;
+}
+function updCams(dt){
+ for(const c of CAMS){
+  c.a+=dt*.7;c.cd-=dt;
+  const d=dist(c.x,c.y,P.x,P.y);
+  let see=0;
+  if(d<CAMR){
+   const ang=Math.atan2(P.y-c.y,P.x-c.x);
+   const df=Math.abs(Math.atan2(Math.sin(ang-c.a),Math.cos(ang-c.a)));
+   if(df<CAMCONE&&losCam(c.x,c.y,P.x,P.y))see=1;
+  }
+  c.sees=see;
+  if(see){
+   c.seeT+=dt;
+   if(c.seeT>1.2&&c.cd<=0){c.cd=5;noise(P.x,P.y,12,'camera');say('A camera spotted you!',2)}
+  }else c.seeT=Math.max(0,c.seeT-dt);
+ }
+}
+
+/* -------------------------------------------------------- neighbour brain */
+function stationFor(type){
+ const L=ST[type];
+ if(!L)return null;
+ let b=null,bd=1e9;
+ for(const s of L){
+  const d=dist(N.x,N.y,s[0],s[1])+Math.random()*2.5-heatAt(s[0],s[1])*.15;
+  if(d<bd){bd=d;b=s}
+ }
+ return b;
+}
+function hotRoomSpot(){
+ let best=null,bs=-1;
+ for(const r of RMC){
+  const name=r[5];
+  const sc=(MEM.rooms[name]||0)*.35+roomHeat(name)*.55+Math.random()*.5+.08;
+  if(sc>bs){bs=sc;best=r}
+ }
+ if(!best)return null;
+ const q=nearestStandable((best[0]+best[2])/2,(best[1]+best[3])/2);
+ if(!q)return null;
+ return{x:q[0]+.5,y:q[1]+.5,t:2.4,label:'checking the '+best[5]};
+}
+function entrySpot(){
+ const arr=Object.entries(MEM.entries).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
+ if(!arr.length)return null;
+ const a=arr[0][0].split(',').map(Number);
+ const s=inspectSpot(a[0],a[1],N.x,N.y,true);
+ return{x:s[0],y:s[1],fx:a[0]+.5,fy:a[1]+.5};
+}
+function guardObjective(){
+ const seen=CT.filter(c=>c.seen).map(c=>c.id);
+ if(seen.length>=2||(P.red&&P.blue))return{n:'guard_basement',p:{}};
+ if(seen.includes('fridge')){
+  const s=inspectSpot(37,10,N.x,N.y,false);
+  return{n:'guard_obj',p:{x:s[0],y:s[1],label:'watching the study',t:9}};
+ }
+ if(seen.includes('desk')){
+  const s=inspectSpot(32,9,N.x,N.y,false);
+  return{n:'guard_obj',p:{x:s[0],y:s[1],label:'watching the kitchen',t:9}};
+ }
+ if(seen.includes('toolbox')&&!P.blue){
+  const s=inspectSpot(37,10,N.x,N.y,false);
+  return{n:'guard_obj',p:{x:s[0],y:s[1],label:'watching the study',t:9}};
+ }
+ return null;
+}
+function pickTask(){
+ if(state!=='play')return;
+ /* planned fortifications first */
+ if(MEM.plans.length){
+  let plan=null;
+  while(MEM.plans.length&&!plan){
+   const p=MEM.plans.shift();
+   if(p.t==='board'&&T(p.x|0,p.y|0)==='X')continue;
+   plan=p;
+  }
+  save();
+  if(plan){
+   if(plan.t==='board'){run('board_window',{x:plan.x|0,y:plan.y|0},1);return}
+   if(plan.t==='trap'){run('set_bear_trap',{x:plan.x|0,y:plan.y|0},1);return}
+   if(plan.t==='cam'){run('install_camera',plan,1);return}
+   if(plan.t==='lock'){run('lock_front',plan,1);return}
+  }
+ }
+ /* nearest broken window */
+ let bw=null,bd=1e9;
+ for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++)if(G[y][x]==='w'){
+  const d=dist(N.x,N.y,x+.5,y+.5);if(d<bd){bd=d;bw={x,y}}
+ }
+ if(bw&&Math.random()<.92){run('repair_window',bw,1);return}
+ /* notice a looted container */
+ const unseen=CT.find(c=>c.done&&!c.seen);
+ if(unseen&&Math.random()<.7){
+  const s=inspectSpot(unseen.x,unseen.y,N.x,N.y,false);
+  run('inspect_container',{x:s[0],y:s[1],c:unseen},1);return;
+ }
+ /* clean the nearest mess */
+ let sp=null;bd=1e9;
+ for(const s of SPL){
+  if(s.claimed)continue;
+  const d=dist(N.x,N.y,s.x,s.y);
+  if(d<bd){bd=d;sp=s}
+ }
+ if(sp&&Math.random()<.8){sp.claimed=1;run(sp.k==='splat'?'mop_splat':'pick_up_litter',{x:sp.x,y:sp.y,s:sp},1);return}
+ /* put dropped items back */
+ let away=null;bd=1e9;
+ for(const i of ITEMS){
+  if(i.fly||invHas(i)||i.x<0||i.cl)continue;
+  const d=dist(i.x,i.y,i.hx,i.hy);
+  if(d>2.5&&d<bd){bd=d;away=i}
+ }
+ if(away&&Math.random()<.75){
+  away.cl=1;setTimeout(()=>away.cl=0,20000);
+  run('return_item',{i:away},1);return;
+ }
+ /* routine tasks */
+ const hr=hour%24,C=[];
+ for(const t of TASKS){
+  const s=stationFor(t.st);
+  if(!s)continue;
+  let sc=0;
+  for(const k in t.eff){const v=t.eff[k];sc+=v<0?N.need[k]*-v*2.2:-v*.3}
+  sc+=inWin(t,hr)?.9:(t.hrs?-.6:0);
+  sc-=dist(N.x,N.y,s[0],s[1])/55;
+  if(N.recent.includes(t.name))sc-=1.3;
+  sc+=(MEM.rooms[roomOf(s[0],s[1])]||0)*.02;
+  sc+=Math.min(1.4,heatAt(s[0],s[1])*.12);
+  sc+=Math.random()*.4;
+  if(t.name==='sleep'&&!(hr>=22||hr<6))sc-=2;
+  C.push({sc,t,s});
+ }
+ C.sort((a,b)=>b.sc-a.sc);
+ const top=C.slice(0,4);
+ const best=top.length?top[(Math.random()*Math.min(3,top.length))|0]:null;
+ /* special intentions */
+ const stolen=CT.filter(c=>c.seen).length;
+ const keys=P.red+P.blue+P.pick;
+ const ex=[];
+ ex.push({sc:N.need.s*1.25+(hr>=21||hr<5?.2:0)+Math.random()*.2,n:'patrol_perimeter',p:{a:[6.5,20.5],b:[28.5,34.5]}});
+ ex.push({sc:N.need.s*.8+stolen*.5+keys*.25+MEM.catches*.1+Math.random()*.2,n:'guard_basement',p:{}});
+ const hr2=hotRoomSpot();
+ if(hr2)ex.push({sc:.22+N.need.s*.9+Math.random()*.25,n:'patrol_room',p:hr2});
+ if(stolen){
+  const g=guardObjective();
+  if(g)ex.push({sc:.5+stolen*.45+N.need.s*.5+Math.random()*.2,n:g.n,p:g.p});
+ }
+ if(TRAPS.length){
+  const t=TRAPS[(Math.random()*TRAPS.length)|0];
+  const s=inspectSpot(t.x,t.y,N.x,N.y,false);
+  ex.push({sc:.15+N.need.s*.4+Math.random()*.2,n:'check_traps',p:{x:s[0],y:s[1]}});
+ }
+ if(MEM.catches){
+  const e=entrySpot();
+  if(e)ex.push({sc:.35+Math.random()*.35,n:'ambush_door',p:e});
+ }
+ ex.sort((a,b)=>b.sc-a.sc);
+ const special=ex[0];
+ if(special&&special.sc>(best?best.sc:0)){run(special.n,special.p,0);return}
+ if(!best){run('grumble',{},0);return}
+ const t=best.t,d=rnd(t.a,t.b)*.5,s=best.s;
+ N.recent.push(t.name);if(N.recent.length>6)N.recent.shift();
+ const sl=t.name==='sleep';
+ const steps=[go(s[0],s[1])];
+ if(sl)steps.push(fn(()=>N.sleeping=1));
+ steps.push(wait(d,t.name.replace(/_/g,' ')+'…',{eff:t.eff,sweep:0}));
+ if(sl)steps.push(fn(()=>N.sleeping=0));
+ steps.push(fn(()=>{N.done++}));
+ N.st=t.name;N.script=steps;N.si=0;N.stepT=0;N.path=[];N.prio=0;
+ N.spd=2.2+MEM.catches*.1;N.mode='idle';
+}
+function aiUpdate(dt){
+ N.need.h=cl(N.need.h+dt*.004,0,1);
+ N.need.t=cl(N.need.t+dt*.005,0,1);
+ N.need.b=cl(N.need.b+dt*.006,0,1);
+ N.need.e=cl(N.need.e+dt*.0025*(N.sleeping?-3:1),0,1);
+ N.need.y=cl(N.need.y+dt*.002,0,1);
+ N.need.l=cl(N.need.l+dt*.004,0,1);
+ N.need.s=cl(N.need.s-dt*.004,0,1);
+ N.needT-=dt;
+ if(N.needT<=0){
+  N.needT=.5;
+  let br=0;
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++)if(G[y][x]==='w')br++;
+  N.need.d=cl(SPL.length*.18+br*.35,0,1);
+ }
+ if(N.stun>0){N.stun-=dt;return}
+ N.unT-=dt;
+ if(N.unT<=0){N.unT=.25;forceUnstuck()}
+ percept(dt);
+ if(!N.pp)N.pp={x:P.x,y:P.y};
+ if(dt>0&&N.sees){
+  const k=Math.min(1,dt*6);
+  N.pvel.x+=(cl((P.x-N.pp.x)/dt,-7,7)-N.pvel.x)*k;
+  N.pvel.y+=(cl((P.y-N.pp.y)/dt,-7,7)-N.pvel.y)*k;
+ }else{
+  N.pvel.x*=.97;N.pvel.y*=.97;
+ }
+ N.pp.x=P.x;N.pp.y=P.y;
+ if(N.sees){
+  N.heatT+=dt;
+  if(N.heatT>=1){
+   N.heatT=0;addHeat(P.x,P.y,1);
+   MEM.hours[hour|0]=(MEM.hours[hour|0]||0)+1;markMem();
+  }
+ }
+ const d=N.dist||99;
+ if(N.sees){
+  N.al=Math.min(1,N.al+dt*(d<4?4:2.2)*(P.sprint?1.4:P.crouch?.6:1)/(N.sleeping?3:1));
+  N.lastSeen={x:P.x,y:P.y};
+ }else if(N.periph&&N.mode!=='chase')N.al=Math.min(1,N.al+dt*.8);
+ else N.al=Math.max(0,N.al-dt*.35);
+ if(N.mode!=='chase'){
+  if(N.al>=1&&N.sees)startChase();
+  else if(N.al>.35&&N.st!=='noticing'&&N.prio<2&&!N.sleeping){N.mode='idle';run('noticing',{},2)}
+ }
+ if(N.mode==='chase'){chaseUpdate(dt);return}
+ if(N.mode==='search'){
+  N.searchT+=dt;N.bt-=dt;
+  if(N.bt<=0){N.bt=.5;diffuse()}
+ }
+ if(N.sees&&N.mode==='search')N.al=Math.max(N.al,.4);
+ if(N.script.length)scriptUpdate(dt);
+ else pickTask();
+}
+
+/* ------------------------------------------------------- catch / retry / win */
+function learn(){
+ const n=[];
+ if(MEM.plans.some(p=>p.t==='board'))n.push('He will board up the windows you climb through.');
+ if(MEM.plans.some(p=>p.t==='trap'))n.push('He will set bear traps at your favourite entrances.');
+ if(MEM.catches>=2&&MEM.cams.length===0&&!MEM.plans.some(p=>p.t==='cam')){
+  const hot=Object.entries(MEM.rooms).filter(e=>e[0]!=='Yard').sort((a,b)=>b[1]-a[1])[0];
+  const r=roomRect(hot?hot[0]:'Foyer')||RMC[5];
+  MEM.plans.push({t:'cam',x:r[0]+.5,y:r[1]+.5});
+  n.push('He will mount a camera in the '+(hot?hot[0]:'Foyer')+'.');
+ }
+ if(MEM.catches>=3&&!MEM.front&&!MEM.plans.some(p=>p.t==='lock')){
+  MEM.plans.push({t:'lock',x:0,y:0});
+  n.push('He will change the front door lock.');
+ }
+ const hotRoom=Object.entries(MEM.rooms).filter(e=>e[0]!=='Yard').sort((a,b)=>b[1]-a[1])[0];
+ if(hotRoom&&hotRoom[1]>4)n.push('He will patrol the '+hotRoom[0]+' more often.');
+ if(hourAffinity()>.5)n.push('He expects you around '+String(hour|0).padStart(2,'0')+':00 now.');
+ n.push('He is faster and sees further now ('+MEM.catches+' catches).');
+ return n;
+}
+function caught(){
+ if(state!=='play')return;
+ state='caught';
+ MEM.catches++;
+ const rm=roomOf(P.x,P.y);
+ MEM.rooms[rm]=(MEM.rooms[rm]||0)+5;
+ addHeat(P.x,P.y,3);
+ MEM.hours[hour|0]=(MEM.hours[hour|0]||0)+2;
+ const notes=learn();
+ save();memDirty=0;
+ showOv(
+  'CAUGHT in the '+rm,
+  '<div style="text-align:left;max-width:560px">'+(notes.length?notes.map(n=>'▸ '+n).join('\n'):'▸ He is learning how you move.')+'</div>',
+  'TRY AGAIN',
+  retry
+ );
+}
+function resetRound(){
+ resetPlayer();resetN();
+ for(const c of CT){c.done=0;c.seen=0}
+ for(const p of PL)p.n=3;
+ SECRET.got=0;
+ SPL.length=0;PR.length=0;NZ.length=0;
+ for(const i of ITEMS){i.x=i.hx;i.y=i.hy;i.z=0;i.fly=0;i.cl=0;i.vx=i.vy=i.vz=0}
+ bel.fill(0);cone=[];for(const c of visL)vis[c]=0;visL=[];
+ for(const d of DR){d.o=0;d.t=0;d.hold=0}
+ spawnN();
+ hideOv();
+ state='play';
+ N.mode='idle';N.script=[];N.prio=0;N.focus=null;
+ pickTask();
+}
+function retry(){resetRound()}
+function spawnN(){N.x=28.5;N.y=25.5}
+function win(){
+ state='win';MEM.wins=(MEM.wins||0)+1;save();
+ showOv('YOU STOLE THE SECRET!','You made it into the vault after '+MEM.catches+' catch(es).','PLAY AGAIN',()=>location.reload());
+}
+function showOv(h,t,b,f){
+ $('ov').style.display='flex';
+ $('ov').querySelector('h1').textContent=h;
+ $('ovt').innerHTML=t;
+ const g=$('go');g.textContent=b;g.onclick=f;
+}
+function hideOv(){$('ov').style.display='none'}
+function wipeMemory(){MEM=memBlank();save();memDirty=0}
+$('forget').onclick=()=>{wipeMemory();location.reload()};
+
+/* -------------------------------------------------------------- main tick */
+function tick(dt){
+ tm+=dt;
+ if(state!=='play')return;
+ hour=(hour+dt/10)%24;
+ if(msgT>0){msgT-=dt;if(msgT<=0)$('msg').style.display='none'}
+ playerUpdate(dt);
+ updPR(dt);
+ updDoors(dt);
+ updCams(dt);
+ aiUpdate(dt);
+ flushMem(dt);
+ for(const n of NZ)n.t+=dt;
+ while(NZ.length&&NZ[0].t>.9)NZ.shift();
+}
+
+/* ---------------------------------------------------------------- render */
+const cv=$('c'),cx=cv.getContext('2d'),FL=document.createElement('canvas');
+FL.width=W*32;FL.height=H*32;
+(function(){
+ const c=FL.getContext('2d');
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  let col=(x+y)%2?'#86c96e':'#7fc268';
+  for(const r of RMC)if(x>=r[0]&&x<=r[2]&&y>=r[1]&&y<=r[3]){col=r[4];break}
+  if((x===28&&y>30&&y<39)||(y===31&&x>=26&&x<=30))col='#d9d4c2';
+  c.fillStyle=col;c.fillRect(x*32,y*32,32,32);
+  if(col.length===7&&RMC.some(r=>r[4]===col)){c.strokeStyle='rgba(0,0,0,.06)';c.strokeRect(x*32,y*32,32,32)}
+ }
+})();
+const FC={couch:'#4f7fd1',tv:'#222',table:'#b07a45',shelf:'#7a5230',sink:'#9ab',stove:'#888',counter:'#d8d0c0',fridge:'#f2f2f2',coat:'#6a4',mirror:'#9cf',bed:'#e9e4f0',wardrobe:'#7a5230',night:'#a57',desk:'#9b6a3a',toilet:'#fff',tub:'#dff',bench:'#a07a3a',rack:'#554',mbox:'#36c',trash:'#556',toolbox:'#c33'};
+const IC={tomato:'#e63b2e',can:'#c33',vase:'#3a86d9',chair:'#b5651d',box:'#c8964f',lamp:'#ffe27a'};
+function draw(dt){
+ const w=innerWidth,h=innerHeight,d=Math.min(devicePixelRatio||1,2);
+ if(cv.width!==(w*d|0)||cv.height!==(h*d|0)){cv.width=w*d;cv.height=h*d}
+ cam.x+=(P.x-cam.x)*Math.min(1,dt*8);
+ cam.y+=(P.y-cam.y)*Math.min(1,dt*8);
+ const c=cx;
+ c.setTransform(1,0,0,1,0,0);
+ c.fillStyle='#16202b';c.fillRect(0,0,cv.width,cv.height);
+ c.setTransform(d*ZOOM,0,0,d*ZOOM,d*(w/2-cam.x*ZOOM),d*(h/2-cam.y*ZOOM));
+ c.lineWidth=.06;c.lineJoin='round';
+ c.drawImage(FL,0,0,W,H);
+ const x0=Math.max(0,((cam.x-w/2/ZOOM)|0)-1),x1=Math.min(W-1,((cam.x+w/2/ZOOM)|0)+1);
+ const y0=Math.max(0,((cam.y-h/2/ZOOM)|0)-1),y1=Math.min(H-1,((cam.y+h/2/ZOOM)|0)+1);
+ c.strokeStyle='#1b1e22';
+ for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+  const ch=G[y][x];let col=null,i=0;
+  if(ch==='#')col='#3b3f46';else if(ch==='F')col='#fff';else if(ch==='W')col='#9fd4ef';
+  else if(ch==='w')col='#d8f1ff';else if(ch==='X')col='#8a6246';else if(ch==='L')col='#cc3b32';
+  else if(ch==='B')col='#7a3db0';else if(ch==='D'){col='#a0632c';i=.15}
+  if(!col)continue;
+  if(ch==='D'&&DRM[y*W+x]&&DRM[y*W+x].o>.4)c.globalAlpha=.35;
+  c.fillStyle=col;c.fillRect(x+i,y+i,1-2*i,1-2*i);
+  if(ch!=='#')c.strokeRect(x+i,y+i,1-2*i,1-2*i);
+  c.globalAlpha=1;
+  if(ch==='w'){
+   c.strokeStyle='#789';c.beginPath();c.moveTo(x+.1,y+.9);c.lineTo(x+.5,y+.3);c.lineTo(x+.9,y+.9);c.stroke();c.strokeStyle='#1b1e22';
+  }
+ }
+ for(const f of FU){
+  c.fillStyle=f[0]==='tree'?'#3f9a4a':FC[f[0]]||'#999';
+  if(f[0]==='tree'){c.beginPath();c.arc(f[1]+.5,f[2]+.5,1.1,0,7);c.fill();c.stroke()}
+  else{c.fillRect(f[1]+.05,f[2]+.05,f[3]-.1,f[4]-.1);c.strokeRect(f[1]+.05,f[2]+.05,f[3]-.1,f[4]-.1)}
+ }
+ for(const p of PL){
+  c.fillStyle='#2f8a3a';c.beginPath();c.arc(p.x+.5,p.y+.5,.45,0,7);c.fill();
+  c.fillStyle='#e63b2e';
+  for(let i=0;i<p.n;i++){c.beginPath();c.arc(p.x+.3+i*.2,p.y+.6,.11,0,7);c.fill()}
+ }
+ for(const s of SPL){c.fillStyle=s.k==='splat'?'#e63b2eaa':'#7ec8ffaa';c.beginPath();c.arc(s.x,s.y,.35,0,7);c.fill()}
+ for(const t of TRAPS){
+  c.strokeStyle=t.armed?'#cc3b32':'#888';c.lineWidth=.08;c.beginPath();
+  c.arc(t.x+.5,t.y+.5,.32,0,7);c.moveTo(t.x+.3,t.y+.3);c.lineTo(t.x+.7,t.y+.7);
+  c.moveTo(t.x+.7,t.y+.3);c.lineTo(t.x+.3,t.y+.7);c.stroke();
+ }
+ c.lineWidth=.06;c.strokeStyle='#1b1e22';
+ for(const k of CT)if(!k.done){c.fillStyle='#ffd23f';c.fillRect(k.x-.15,k.y-.15,.3,.3)}
+ if(!SECRET.got){c.fillStyle='#ffd23f';c.beginPath();c.arc(SECRET.x,SECRET.y,.3+Math.sin(tm*4)*.05,0,7);c.fill();c.stroke()}
+ for(const i of ITEMS){
+  if(i.x<0||i.fly||invHas(i))continue;
+  c.fillStyle=IC[i.k]||'#999';c.beginPath();
+  if(i.k==='chair'||i.k==='box')c.rect(i.x-.2,i.y-.2,.4,.4);else c.arc(i.x,i.y,.2,0,7);
+  c.fill();c.stroke();
+ }
+ for(const p of PR){
+  if(p.dead)continue;
+  c.fillStyle='#0004';c.beginPath();c.arc(p.x,p.y,.15,0,7);c.fill();
+  c.fillStyle=IC[p.k]||'#999';c.beginPath();c.arc(p.x,p.y-p.z*.25,.18,0,7);c.fill();c.stroke();
+ }
+ for(const cm of CAMS){
+  c.fillStyle='#222';c.fillRect(cm.x-.2,cm.y-.2,.4,.4);
+  c.beginPath();c.moveTo(cm.x,cm.y);
+  for(let i=0;i<=14;i++){
+   const a=cm.a-CAMCONE+2*CAMCONE*i/14;
+   let ex=cm.x,ey=cm.y;
+   for(let r=.3;r<CAMR;r+=.25){
+    const x=cm.x+Math.cos(a)*r,y=cm.y+Math.sin(a)*r,ch=T(x,y);
+    if(ch==='#'||ch==='S'||ch==='X'||ch==='L'||ch==='B'||ch==='T'||ch==='W'||(ch==='D'&&doorClosed(x|0,y|0)))break;
+    ex=x;ey=y;
+   }
+   c.lineTo(ex,ey);
+  }
+  c.closePath();c.fillStyle=cm.sees?'rgba(232,69,58,.25)':'rgba(232,69,58,.08)';c.fill();c.strokeStyle='#1b1e22';
+ }
+ if(SHOW.bel){
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+   const v=bel[y*W+x];
+   if(v>.002){c.fillStyle='rgba(255,0,60,'+Math.min(.65,v*14)+')';c.fillRect(x,y,1,1)}
+  }
+ }
+ for(const n of NZ){
+  c.strokeStyle='rgba(255,255,255,'+(.7*(1-n.t/.9))+')';c.lineWidth=.08;c.beginPath();
+  c.arc(n.x,n.y,n.r*Math.min(1,n.t/.9),0,7);c.stroke();
+ }
+ c.lineWidth=.06;
+ if(cone.length){
+  c.beginPath();c.moveTo(N.x,N.y);
+  for(const q of cone)c.lineTo(q[0],q[1]);
+  c.closePath();
+  c.fillStyle=N.mode==='chase'?'rgba(232,69,58,.22)':N.al>.15?'rgba(224,194,58,.26)':N.sleeping?'rgba(120,120,255,.12)':'rgba(255,240,150,.17)';
+  c.fill();
+ }
+ if(SHOW.path&&N.path.length){
+  c.strokeStyle='#2d6fdc';c.lineWidth=.1;c.beginPath();c.moveTo(N.x,N.y);
+  for(const q of N.path)c.lineTo(q[0],q[1]);c.stroke();c.lineWidth=.06;
+ }
+ c.strokeStyle='#1b1e22';c.lineWidth=.1;
+ c.fillStyle=N.mode==='chase'?'#e8453a':'#e8803a';
+ c.beginPath();c.arc(N.x,N.y,.46,0,7);c.fill();c.stroke();
+ c.fillStyle='#2a1a10';c.beginPath();c.arc(N.x+Math.cos(N.a)*.28,N.y+Math.sin(N.a)*.28,.13,0,7);c.fill();
+ c.fillStyle='#fff';c.font='bold .5px sans-serif';c.textAlign='center';c.lineWidth=.08;c.strokeStyle='#000';
+ const lb=N.st.replace(/_/g,' ')+(N.label?' · '+N.label:'');
+ c.strokeText(lb,N.x,N.y-.8);c.fillText(lb,N.x,N.y-.8);
+ if(N.sleeping){c.font='bold 1px sans-serif';c.fillStyle='#fff';c.fillText('Zzz',N.x+.5,N.y-1.4)}
+ if(N.al>.15||N.mode==='chase'){
+  c.font='bold 1.2px sans-serif';c.fillStyle=N.mode==='chase'?'#f33':'#fc0';
+  c.fillText(N.mode==='chase'?'!':'?',N.x,N.y-1.5);
+ }
+ if(held()){
+  c.setLineDash([.15,.2]);c.strokeStyle='rgba(255,255,255,.8)';c.lineWidth=.06;
+  c.beginPath();c.moveTo(P.x,P.y);c.lineTo(P.x+Math.cos(P.aim)*9,P.y+Math.sin(P.aim)*9);c.stroke();c.setLineDash([]);
+ }
+ const pr=P.crouch?.27:.36;
+ c.strokeStyle='#1b1e22';c.lineWidth=.1;c.fillStyle='#f7f7f7';
+ c.beginPath();c.arc(P.x,P.y,pr,0,7);c.fill();c.stroke();
+ c.fillStyle='#2d6fdc';c.beginPath();c.arc(P.x+Math.cos(P.aim)*pr*.55,P.y+Math.sin(P.aim)*pr*.55,pr*.38,0,7);c.fill();
+ if(held()){c.fillStyle=IC[held().k]||'#999';c.beginPath();c.arc(P.x-Math.cos(P.aim)*.3,P.y-Math.sin(P.aim)*.3,.14,0,7);c.fill()}
+ if(P.hold>0&&P.tgt){
+  c.strokeStyle='#ffd23f';c.lineWidth=.12;c.beginPath();
+  c.arc(P.x,P.y,.6,-PI/2,-PI/2+P.hold/P.tgt.t*2*PI);c.stroke();
+ }
+ c.setTransform(1,0,0,1,0,0);
+ const vg=c.createRadialGradient(cv.width/2,cv.height/2,Math.min(cv.width,cv.height)*.42,cv.width/2,cv.height/2,Math.max(cv.width,cv.height)*.78);
+ vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(6,12,20,.5)');
+ c.fillStyle=vg;c.fillRect(0,0,cv.width,cv.height);
+ const nt=Math.max(0,Math.cos((hour-13)/24*2*PI)*.45);
+ if(nt>.02){c.fillStyle='rgba(10,20,60,'+nt*.55+')';c.fillRect(0,0,cv.width,cv.height)}
+}
+
+/* ----------------------------------------------------------------- HUD */
+let hs='',lt=0;
+function hud(){
+ const hh=Math.floor(hour),mm=Math.floor((hour%1)*60),nd=N.need;
+ const objs=[];
+ objs.push(P.pick?'🗝 lockpick ✔':'1. lockpick (shed, west yard)');
+ objs.push(P.red?'🔴 red key ✔':'2. red key (kitchen fridge)');
+ objs.push(P.blue?'🔵 blue key ✔ (study needs lockpick)':'3. blue key (study desk)');
+ objs.push('4. basement door (workshop) → SECRET');
+ let IH='';
+ for(let s=0;s<4;s++){
+  const it=P.inv[s];
+  IH+='<span class="slot'+(s===P.sel?' sel':'')+'"><b>'+(s+1)+'</b>'+(it?it.k:'—')+'</span>';
+ }
+ const bar=(v,col)=>'<span class=bar style="width:'+(v*60|0)+'px;background:'+col+'"></span>';
+ const goal=playerGoal();
+ const L=`<b>Objective</b>
+${objs.join('\n')}
+Holding: ${held()?held().k:'—'}${P.tgt?'\n<b style="color:#ffd23f">'+P.tgt.l+'</b>':''}`;
+ const D=`<b>THE NEIGHBOUR</b> ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}
+state: <b>${N.st}</b> (${N.mode}, prio ${N.prio})
+awareness ${bar(N.al,'#f33')}
+hunger ${bar(nd.h,'#e8c04a')} thirst ${bar(nd.t,'#6cf')}
+bored ${bar(nd.b,'#c9f')} tired ${bar(nd.e,'#99a')}
+mess ${bar(nd.d,'#a63')} suspicion ${bar(nd.s,'#f80')}
+thinks you want: <b>${goal.name}</b>
+task state: ${N.st.replace(/_/g,' ')} · tasks done ${N.done}
+catches ${MEM.catches} · belief ${((N.mass||0)*100|0)}% · knows ${STATE_COUNT} states`;
+ if(L+D+IH!==hs){hs=L+D+IH;$('hud').innerHTML=L;$('dbg').innerHTML=D;$('inv').innerHTML=IH}
+}
+function frame(t){
+ requestAnimationFrame(frame);
+ const dt=Math.min(.05,(t-lt)/1000||0);
+ lt=t;
+ if(state==='play')tick(dt);
+ if(P){draw(dt);hud()}
+}
+
+/* ----------------------------------------------------------------- input */
+addEventListener('keydown',e=>{
+ const k=(e.key||'').toLowerCase();K[k]=1;
+ if(state==='play'){
+  if(k>='1'&&k<='4')P.sel=k.charCodeAt(0)-49;
+  if(k==='q'){
+   const i=held();
+   if(i){
+    P.inv[P.sel]=null;i.x=P.x;i.y=P.y;
+    if(i.k==='tomato'){SPL.push({x:P.x,y:P.y,k:'splat'})}
+    else if(ITEMS.indexOf(i)<0)ITEMS.push(i);
+   }
+  }
+  if(k==='f')throwHeld();
+  if(k==='e'&&P.tgt&&P.tgt.t===0)doTarget(P.tgt);
+  if(k==='h')SHOW.bel^=1;
+  if(k==='p')SHOW.path^=1;
+  if(k==='escape'){state='paused';showOv('PAUSED','He is still in there.','RESUME',()=>{state='play';hideOv()})}
+ }else if(k==='escape'&&state==='paused'){state='play';hideOv()}
+ if(k.startsWith('arrow')||k===' ')e.preventDefault();
+});
+addEventListener('keyup',e=>K[(e.key||'').toLowerCase()]=0);
+addEventListener('blur',()=>{for(const k in K)K[k]=0});
+addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+addEventListener('mousedown',e=>{if(e.target===cv&&state==='play')throwHeld()});
+addEventListener('wheel',e=>{ZOOM=cl(ZOOM*(e.deltaY<0?1.1:.91),12,60)},{passive:true});
+
+function start(){
+ resetRound();
+ state='play';
+ say('Find the lockpick in the shed. Tomatoes grow in the garden.',4);
+}
+$('go').onclick=start;
+resetPlayer();resetN();
+requestAnimationFrame(frame);
+
+/* Debug/automation handle (also used by test/game2d.js). */
+window.__g={
+ G,T,TASKS,S,ST,STATE_COUNT,tick,start,findPath,inspectSpot,nearestFree,nearestStandable,standableCell,
+ unstickEntity,forceUnstuck,evictCell,run,pickTask,startChase,loseChase,seedBelief,beliefSpots,playerGoal,
+ resetRound,retry,caught,doTarget,findTarget,throwHeld,noise,los,clearLine,npass,ppass,circFree,walls,roomOf,roomRect,
+ get P(){return P},get N(){return N},get state(){return state},get hour(){return hour},get tm(){return tm},get cam(){return cam},
+ ITEMS,SPL,PR,NZ,bel,CT,TRAPS,CAMS,DRM,PL,RMC,SECRET,keys:K,wipeMemory,get MEM(){return MEM},
+ hourSet:h=>{hour=h},setState:s=>{state=s},SHOW,ZOOM:()=>ZOOM,
+ saveMemory:save,heatAt,heatKey,hourAffinity,entrySpot,guardObjective,interceptPoint
+};
+</script></body></html>
