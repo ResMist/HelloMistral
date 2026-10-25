@@ -2899,10 +2899,14 @@ function render(dt) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = COL.bg;
   ctx.fillRect(0, 0, CVW, CVH);
-  if (UI.screen === 'menu') { drawMenu(dt); return; }
-  if (UI.screen === 'help') { drawHelp(); return; }
-  if (UI.screen === 'cut') { drawCut(dt); return; }
-  if (!GAME || !W || !P) return;
+  if (UI.screen === 'menu' || UI.screen === 'help' || UI.screen === 'cut' || !GAME || !W || !P) {
+    showPanels(false);
+    if (UI.screen === 'menu') { drawMenu(dt); return; }
+    if (UI.screen === 'help') { drawHelp(); return; }
+    if (UI.screen === 'cut') { drawCut(dt); return; }
+    return;
+  }
+  showPanels(true);
   drawWorld();
   drawHUD();
   if (UI.screen === 'pause') drawPause();
@@ -3257,6 +3261,17 @@ function opaque(z, x, y) {
 }
 
 /* -------------------------------------------------------------- the HUD */
+let panelsOn = null;
+function showPanels(on) {
+  if (panelsOn === on) return;
+  panelsOn = on;
+  for (const id of ['hud', 'dbg', 'inv']) {
+    const el = $(id);
+    if (el) el.style.display = on ? 'block' : 'none';
+  }
+  if (!on) { const m = $('msg'); if (m) m.style.display = 'none'; }
+}
+
 let hudCache = '';
 function drawHUD() {
   const hud = $('hud'), dbg = $('dbg'), inv = $('inv'), msg = $('msg');
@@ -3347,11 +3362,12 @@ function drawMenu(dt) {
   if (W) { // a small plain map of the house as a backdrop
     ctx.save();
     ctx.globalAlpha = 0.18;
-    ctx.translate(CVW / 2 - HOUSE.x * 9, CVH / 2 - HOUSE.y * 9);
+    const S = 11;
+    ctx.translate(CVW / 2 - (HOUSE.x + HOUSE.w / 2) * S, CVH / 2 - (HOUSE.y + HOUSE.h / 2) * S);
     for (let y = HOUSE.y; y < HOUSE.y + HOUSE.h; y++) for (let x = HOUSE.x; x < HOUSE.x + HOUSE.w; x++) {
       const c = W.floors[0].G[y] && W.floors[0].G[y][x];
       ctx.fillStyle = c === '#' ? '#3a4553' : c === 'D' ? '#8a5a2b' : '#7b8fa3';
-      ctx.fillRect(x * 9, y * 9, 8.4, 8.4);
+      ctx.fillRect(x * S, y * S, S - 0.6, S - 0.6);
     }
     ctx.restore();
   }
@@ -3369,20 +3385,20 @@ function drawMenu(dt) {
   const has = !!storedMatch();
   const items = menuItems(has);
   items.forEach((it, i) => {
-    const y = 250 + i * 56;
+    const y = 246 + i * 66;
     const sel = i === MENU.sel;
     ctx.fillStyle = sel ? 'rgba(242,193,78,0.16)' : 'rgba(255,255,255,0.04)';
-    roundRect(CVW / 2 - 190, y - 30, 380, 46, 12); ctx.fill();
-    if (sel) { ctx.strokeStyle = 'rgba(242,193,78,0.65)'; ctx.lineWidth = 1.4; roundRect(CVW / 2 - 190, y - 30, 380, 46, 12); ctx.stroke(); }
+    roundRect(CVW / 2 - 200, y - 28, 400, 56, 12); ctx.fill();
+    if (sel) { ctx.strokeStyle = 'rgba(242,193,78,0.65)'; ctx.lineWidth = 1.4; roundRect(CVW / 2 - 200, y - 28, 400, 56, 12); ctx.stroke(); }
     ctx.fillStyle = it.disabled ? 'rgba(160,176,196,0.35)' : sel ? '#ffe6b0' : '#cfdae8';
     ctx.font = '600 17px ui-monospace, monospace';
-    ctx.fillText(it.label, CVW / 2, y);
+    ctx.fillText(it.label, CVW / 2, y - 1);
     if (it.sub) {
       ctx.fillStyle = 'rgba(160,176,196,0.5)';
       ctx.font = '10.5px ui-monospace, monospace';
-      ctx.fillText(it.sub, CVW / 2, y + 15);
+      ctx.fillText(it.sub, CVW / 2, y + 17);
     }
-    MENU.rects[i] = { x: CVW / 2 - 190, y: y - 30, w: 380, h: 46 };
+    MENU.rects[i] = { x: CVW / 2 - 200, y: y - 28, w: 400, h: 56 };
   });
   ctx.fillStyle = 'rgba(160,176,196,0.55)';
   ctx.font = '11px ui-monospace, monospace';
