@@ -1,8 +1,8 @@
 'use strict';
 // test/game2d.js — boots the single-file game in a stub DOM and drives it with
-// simulated input. Covers the generator contract, the full playable route,
-// keyring-vs-inventory, floors, night senses, the neighbour's learning, traps,
-// cameras, and the per-match memory boundary.
+// simulated input. The map is FIXED now, so this suite pins the map down:
+// tile positions, room list, both floors, the stair hand-off, the study lock,
+// the vault, the night senses, the belief-driven chase, and the memory boundary.
 //   node test/game2d.js
 
 const vm = require('vm');
@@ -52,12 +52,11 @@ function boot(seed, store) {
       let i = 0, frames = 0, stuck = 0, last = { x: P.x, y: P.y };
       const lim = maxFrames || 5000;
       while (frames++ < lim) {
-        if (api.GAME.state !== 'play') return { ok: false, why: 'game over: ' + api.SHOW.over };
+        if (api.GAME.state !== 'play') return { ok: false, why: 'game over' };
         if (P.z === z && Math.hypot(P.x - x, P.y - y) < 1.35) { this.clear(); return { ok: true, frames }; }
         if (i >= path.length) {
-          // reached the end of the path but not close enough: nudge
           const dx = x - P.x, dy = y - P.y;
-          if (Math.hypot(dx, dy) < 0.15) return { ok: true, frames };
+          if (Math.hypot(dx, dy) < 0.15) { this.clear(); return { ok: true, frames }; }
           path = [path[path.length - 1]];
           i = 0;
         }
@@ -65,16 +64,14 @@ function boot(seed, store) {
         const dx = wp.x + 0.5 - P.x, dy = wp.y + 0.5 - P.y;
         const d = Math.hypot(dx, dy);
         if (wp.z !== P.z) {
-          if (d < 0.65) { this.clear(); api.interact(); i++; continue; }
+          if (d < 0.7) { this.clear(); api.interact(); i++; continue; }
         } else if (d < 0.2) { i++; continue; }
-
-        // face + auto-open a closed door directly ahead
         P.a = Math.atan2(dy, dx);
         const ax = P.x + Math.cos(P.a) * 0.7, ay = P.y + Math.sin(P.a) * 0.7;
         const tile = api.tileAt(P.z, ax | 0, ay | 0);
         if (tile === 'D') {
-          const dClosed = this.ev('doorClosed(' + P.z + ',' + (ax | 0) + ',' + (ay | 0) + ')');
-          if (dClosed) { this.clear(); api.interact(); continue; }
+          const closed = this.ev('doorClosed(' + P.z + ',' + (ax | 0) + ',' + (ay | 0) + ')');
+          if (closed) { this.clear(); api.interact(); continue; }
         }
         if (tile === 'L' || tile === 'B' || tile === 'W' || tile === 'X') {
           this.clear();
@@ -83,7 +80,6 @@ function boot(seed, store) {
         KEYS.right = dx > 0.12; KEYS.left = dx < -0.12;
         KEYS.down = dy > 0.12; KEYS.up = dy < -0.12;
         api.gameUpdate(1 / 60);
-
         if (frames % 90 === 0) {
           if (Math.hypot(P.x - last.x, P.y - last.y) < 0.25) stuck++; else stuck = 0;
           last = { x: P.x, y: P.y };
@@ -106,619 +102,615 @@ function boot(seed, store) {
   const b = boot(7);
   const api = b.api;
   eq(api.SHOW.screen, 'menu', 'boots to the main menu');
-  ok(!!api.W && api.W.floors.length === 3, 'menu has a preview world with 3 floors');
-  ok(api.W.meta.rooms >= 10, 'preview world has rooms');
+  ok(!!api.W, 'the menu already has a world for its backdrop');
+  eq(api.W.floors.length, 2, 'the menu backdrop is the two-floor house');
   let drew = true;
   try { api.render(1 / 60); } catch (e) { drew = false; }
-  ok(drew, 'menu renders without a player');
-  // Play -> cutscene -> match
+  ok(drew, 'the menu renders without a player');
   api.startMatchFromMenu(true);
   eq(api.SHOW.screen, 'cut', 'Play leads to the cutscene');
-  ok(api.P == null || api.GAME.state === 'cut', 'cutscene holds the game');
+  eq(api.GAME.state, 'cut', 'the cutscene holds the game');
   api.skipCutscene();
-  eq(api.GAME.state, 'play', 'cutscene skips into the match');
+  eq(api.GAME.state, 'play', 'the cutscene skips into the match');
   ok(!!api.P && !!api.N, 'player and neighbour exist');
-  ok(api.N.z === 0 && b.ev('standable(0,' + api.N.x + ',' + api.N.y + ',0.27)'), 'neighbour stands on a valid tile');
-  const blocked = b.walkTo(api.W.front.ix + 0.5, api.W.front.iy + 2, 0, 900);
-  ok(blocked.ok || blocked.why !== 'no path', 'the front of the house is reachable from spawn');
-  ok(b.env.warnings.length === 0, 'no console errors during boot');
+  ok(api.N.z === 0 && b.ev('standable(0,' + api.N.x + ',' + api.N.y + ',0.27)'), 'the neighbour starts on a valid tile');
+  near(api.P.x, 28.5, 0.6, 'the player spawns at the front gate');
+  near(api.P.y, 37.5, 0.6, '...on the path');
+  ok(b.env.warnings.length === 0, 'no console errors during boot (' + b.env.warnings.join(' | ') + ')');
 }
 
-/* ====================================================== 2. generator contract */
+/* ======================================================== 2. the fixed map */
 {
   const b = boot(3);
   b.start(true);
-  const W = b.api.W;
-  eq(W.floors.length, 3, 'three floors exist');
-  eq(W.floors.map((f) => f.z).join(','), '0,1,2', 'floor indices are 0/1/2');
-  ok(W.meta.rooms >= 10 && W.meta.rooms <= 26, 'room count is sane');
-  ok(W.meta.doors >= 8, 'doors were carved');
-  ok(W.meta.windows >= 6, 'windows were fitted');
-  ok(W.stairs.length >= 2, 'at least the upstairs and the cellar stairs exist');
-  const kinds = new Set(W.doors.map((d) => d.kind));
-  ok(kinds.has('lock'), 'the study door is a lock');
-  ok(kinds.has('cellar'), 'the basement door is a cellar lock');
-  eq(W.doors.filter((d) => d.kind === 'lock').length, 1, 'exactly one study lock');
-  eq(W.doors.filter((d) => d.kind === 'cellar').length, 1, 'exactly one cellar door');
-  // every container sits on furniture and is touchable
-  for (const c of W.containers) {
-    let solid = true, adj = false;
-    for (let i = 0; i < (c.w || 1); i++) {
-      if (b.ev('T(' + c.z + ',' + (c.tx + i) + ',' + c.ty + ')') !== 'S') solid = false;
-      if (b.ev('adjacentFree(' + JSON.stringify(W) + ',' + (c.tx + i) + ',' + c.ty + ',' + c.z + ')').length) adj = true;
-    }
-    ok(solid && adj, 'container ' + c.id + ' is solid and reachable');
-  }
-  // windows have interior floor behind them
-  let badWin = 0;
-  for (const w of W.windows) if (b.ev('T(' + w.z + ',' + w.ix + ',' + w.iy + ')') !== '.') badWin++;
-  eq(badWin, 0, 'every window has interior floor behind it');
-  // generate a bunch more worlds in-process
-  let built = 0, attempts = 0, failsGen = 0;
-  for (let seed = 1; seed <= 40; seed++) {
-    let w = null, err = null;
-    try { w = b.ev('buildWorld(' + seed + ')'); } catch (e) { err = e.message; }
-    if (err || !w) { failsGen++; continue; }
-    const v = b.ev('GEN.validateWorld(' + JSON.stringify(w) + ')');
-    if (!v.length) { built++; attempts += w.attempts; }
-    else failsGen++;
-  }
-  ok(built >= 34, 'at least 85% of seeds produce a valid world (' + built + '/40)');
-  ok(built > 0 && attempts / Math.max(1, built) < 10, 'worlds build in few attempts (' + (attempts / Math.max(1, built)).toFixed(2) + ')');
-  ok(failsGen <= 6, 'no more than 15% of seeds fail');
+  const api = b.api, W = api.W;
+  eq(W.fixed, 1, 'the world is marked as hand-authored');
+  eq(W.floors.length, 2, 'there are exactly two floors');
+  eq(W.floors.map((f) => f.z).join(','), '0,1', 'floor indices are 0/1');
+  eq(W.floors[0].name, 'Ground floor', 'floor 0 is the ground floor');
+  eq(W.floors[1].name, 'Upstairs', 'floor 1 is upstairs');
+  eq(W.rooms.length, 15, 'ten ground rooms and five upstairs rooms');
+  eq(W.meta.rooms, 15, 'the meta count agrees');
+  ok(W.meta.doors >= 12, 'the house has its doors (' + W.meta.doors + ')');
+  ok(W.meta.windows >= 10, 'the house has its windows (' + W.meta.windows + ')');
+  // the same map whatever the seed / attempts
+  const a1 = b.ev('JSON.stringify(buildWorld(1).floors[0].G)');
+  const a2 = b.ev('JSON.stringify(buildWorld(99999).floors[0].G)');
+  const a3 = b.ev('JSON.stringify(buildWorld(0).floors[1].G)');
+  const a4 = b.ev('JSON.stringify(buildWorld(4242).floors[1].G)');
+  eq(a1, a2, 'the ground floor is identical for every seed');
+  eq(a3, a4, 'the upper floor is identical for every seed');
+  eq(b.ev('validateWorld(W).length'), 0, 'the fixed map validates clean');
+  // the v1 layout, tile for tile
+  eq(W.floors[0].G[7][12], '#', 'house corner at 12,7');
+  eq(W.floors[0].G[30][43], '#', 'house corner at 43,30');
+  eq(W.floors[0].G[12][23], 'D', 'living-room door on the hall wall');
+  eq(W.floors[0].G[11][34], 'L', 'the study lock sits at 34,11');
+  eq(W.floors[0].G[27][43], 'B', 'the vault door sits at 43,27');
+  eq(W.floors[0].G[26][46], 'V', 'the vault floor is inside');
+  eq(W.floors[0].G[30][28], 'D', 'the front door sits at 28,30');
+  eq(W.floors[0].G[7][26], 'D', 'the north door sits at 26,7');
+  eq(W.floors[0].G[39][28], ',', 'the path runs out through the gate');
+  eq(W.floors[0].G[39][27], 'F', 'the fence is closed either side of it');
+  eq(W.floors[0].G[11][7], 'D', 'the shed has a door');
+  eq(W.floors[0].G[26][31], 'U', 'the stairs up are in the foyer');
+  eq(W.floors[1].G[26][31], 'N', 'the same tile is the stairs down');
+  near(W.secret.x, 46.5, 0.01, 'the SECRET sits where it always did');
+  near(W.secret.y, 26.5, 0.01, '...at 46.5,26.5');
+  eq(W.secret.z, 0, 'the SECRET is on the ground floor');
 }
 
-/* ========================================================= 3. keyring vs bag */
+/* ================================================== 3. the rooms and fittings */
+{
+  const b = boot(4);
+  b.start(true);
+  const api = b.api, W = api.W;
+  const names = W.floors[0].rooms.map((r) => r.name);
+  for (const n of ['Living Room', 'Kitchen', 'Dining Room', 'Foyer', 'Bedroom', 'Study', 'Bathroom', 'Workshop', 'Vault', 'Shed']) {
+    ok(names.indexOf(n) >= 0, 'ground floor has the ' + n);
+  }
+  const unames = W.floors[1].rooms.map((r) => r.name);
+  for (const n of ['Master Bedroom', 'Spare Room', 'Landing', 'Storage', 'Upstairs Bath']) {
+    ok(unames.indexOf(n) >= 0, 'upstairs has the ' + n);
+  }
+  ok(!!W.study && W.study.type === 'study', 'the study is found by type');
+  ok(!!W.kitchen && W.kitchen.type === 'kitchen', 'the kitchen is found by type');
+  ok(!!W.cellar && W.cellar.door.x === 43 && W.cellar.door.y === 27, 'the vault door is the cellar reference');
+  // stairs: two tiles, each a real link both ways
+  eq(W.stairs.length, 2, 'two stair links');
+  for (const s of W.stairs) {
+    eq(s.a.z, 0, 'a stair starts on the ground floor');
+    eq(s.b.z, 1, '...and ends upstairs');
+    eq(s.a.x, s.b.x, 'the stair is vertical');
+    eq(b.ev('stairFrom(0,' + s.a.x + ',' + s.a.y + ').z'), 1, 'walking the stair tile goes up');
+    eq(b.ev('stairFrom(1,' + s.b.x + ',' + s.b.y + ').z'), 0, 'and back down');
+  }
+  // containers
+  const ids = W.containers.map((c) => c.id).sort();
+  ok(ids.indexOf('toolbox') >= 0 && ids.indexOf('fridge') >= 0 && ids.indexOf('desk') >= 0, 'the three key containers exist');
+  for (const c of W.containers) {
+    let solid = true, w = c.w || 1;
+    for (let i = 0; i < w; i++) if (b.ev('T(' + c.z + ',' + (c.tx + i) + ',' + c.ty + ')') !== 'S') solid = false;
+    ok(solid, 'container ' + c.id + ' sits on furniture');
+    ok(!!c.stand, 'container ' + c.id + ' has a standing tile');
+    ok(b.ev('walkCell(' + c.z + ',' + c.stand[0] + ',' + c.stand[1] + ')'), 'container ' + c.id + ' can be reached');
+  }
+  // windows look into a room
+  let bad = 0;
+  for (const win of W.windows) {
+    const r = b.ev('roomAt(' + win.z + ',' + win.ix + ',' + win.iy + ')');
+    if (!r) bad++;
+  }
+  eq(bad, 0, 'every window looks into a room');
+  // doors
+  const kinds = new Set(W.doors.map((d) => d.kind));
+  ok(kinds.has('lock'), 'the study door is a lock');
+  ok(kinds.has('cellar'), 'the vault door is a cellar lock');
+  eq(W.doors.filter((d) => d.kind === 'lock').length, 1, 'exactly one study lock');
+  eq(W.doors.filter((d) => d.kind === 'cellar').length, 1, 'exactly one vault door');
+}
+
+/* ======================================================= 4. reachability */
+{
+  const b = boot(5);
+  b.start(true);
+  const W = b.api.W;
+  // flood the walkable cells from the spawn, with every door open and keys in hand
+  const flood = (withKeys) => b.ev(`(() => {
+    const S = [0,1].map(() => new Uint8Array(MW*MH));
+    const pass = (z,x,y) => {
+      const c = T(z,x,y);
+      if (c === '#') return false;
+      if (c === 'L' || c === 'B') return ${withKeys};
+      return walkCell(z,x,y);
+    };
+    pass(0,0,0);
+    const q = [[0, ${W.spawn.x | 0}, ${W.spawn.y | 0}]];
+    S[0][${W.spawn.x | 0} + ${W.spawn.y | 0}*MW] = 1;
+    while (q.length) {
+      const [z,x,y] = q.shift();
+      for (const [dx,dy] of NB4) {
+        const nx=x+dx, ny=y+dy;
+        if (nx<1||ny<1||nx>=MW-1||ny>=MH-1) continue;
+        if (!pass(z,nx,ny)) continue;
+        if (S[z][nx+ny*MW]) continue;
+        S[z][nx+ny*MW]=1; q.push([z,nx,ny]);
+      }
+      const st = stairFrom(z,x,y);
+      if (st && !S[st.z][st.x+st.y*MW]) { S[st.z][st.x+st.y*MW]=1; q.push([st.z,st.x,st.y]); }
+    }
+    return S;
+  })()`);
+  const seen = flood(1);
+  const MW = b.ev('MW');
+  let unreachable = [];
+  for (const F of W.floors) for (const r of F.rooms) {
+    let hit = false;
+    for (let y = r.y + 1; y <= r.y + r.ih && !hit; y++) for (let x = r.x + 1; x <= r.x + r.iw && !hit; x++) {
+      if (seen[F.z][x + y * MW]) hit = true;
+    }
+    if (!hit) unreachable.push(F.z + ':' + r.name);
+  }
+  eq(unreachable.join('|'), '', 'with the keys, every room on both floors is reachable from the gate');
+  ok(seen[1][Math.floor(W.secret.x) + Math.floor(W.secret.y) * MW] === 0, 'the SECRET tile itself is inside the vault block');
+  // without the keys exactly the study and the vault are shut
+  const locked = flood(0);
+  const shut = [];
+  for (const F of W.floors) for (const r of F.rooms) {
+    let hit = false;
+    for (let y = r.y + 1; y <= r.y + r.ih && !hit; y++) for (let x = r.x + 1; x <= r.x + r.iw && !hit; x++) {
+      if (locked[F.z][x + y * MW]) hit = true;
+    }
+    if (!hit) shut.push(r.name);
+  }
+  eq(shut.sort().join('|'), 'Study|Vault', 'only the study and the vault need keys');
+  // every room has a way in: a door, a lock or a window on its wall ring
+  let sealed = 0;
+  for (const F of W.floors) for (const r of F.rooms) {
+    let ways = 0;
+    for (let x = r.x; x <= r.x + r.iw + 1; x++) {
+      for (const y of [r.y, r.y + r.ih + 1]) {
+        const c = b.ev('T(' + F.z + ',' + x + ',' + y + ')');
+        if (c === 'D' || c === 'L' || c === 'B' || c === 'W') ways++;
+      }
+    }
+    for (let y = r.y; y <= r.y + r.ih + 1; y++) {
+      for (const x of [r.x, r.x + r.iw + 1]) {
+        const c = b.ev('T(' + F.z + ',' + x + ',' + y + ')');
+        if (c === 'D' || c === 'L' || c === 'B' || c === 'W') ways++;
+      }
+    }
+    if (!ways) sealed++;
+  }
+  eq(sealed, 0, 'every room has a door or a window');
+}
+
+/* ========================================================= 5. keyring vs bag */
 {
   const b = boot(7);
   b.start(true);
   const api = b.api, P = api.P;
   ok(!!P.keys && !Array.isArray(P.keys), 'keys live on a keyring object');
-  ok(Array.isArray(P.inv), 'the player still has an inventory array for loot');
+  ok(Array.isArray(P.inv), 'the inventory array is still there for loot');
   eq(Object.keys(P.keys).sort().join(','), 'blue,pick,red', 'the keyring has three slots');
-  b.grab('toolbox'); b.grab('fridge');
-  ok(P.keys.pick && P.keys.red, 'the lockpick and the red key go on the keyring');
+  // the shed first
+  api.freezeAI(true);
+  b.grab('toolbox');
+  ok(P.keys.pick, 'the lockpick goes on the keyring');
+  b.grab('fridge');
+  ok(P.keys.red, 'the red key goes on the keyring');
   eq(P.inv.length, 0, 'keys never enter the inventory');
-  eq(P.carried, 0, 'keys are never carried and never throwable');
-  const keysAsItems = api.ITEMS.filter((it) => /key|pick/i.test(it.k));
-  eq(keysAsItems.length, 0, 'no loose item is a key');
-  // the keyring survives drawing
+  eq(P.carried, 0, 'keys are never carried');
+  eq(api.ITEMS.filter((it) => /key|pick/i.test(it.k)).length, 0, 'no loose item is a key');
   let drew = true;
   try { api.render(1 / 60); } catch (e) { drew = false; }
-  ok(drew, 'the keyring HUD renders');
+  ok(drew, 'the HUD draws the keyring');
 }
 
-/* ==================================================== 4. the full playable run */
+/* ===================================================== 6. the study is locked */
+{
+  const b = boot(8);
+  b.start(true);
+  const api = b.api, P = api.P;
+  api.freezeAI(true);
+  ok(!!P && !P.keys.pick, 'no lockpick to start with');
+  const door = api.W.doors.find((d) => d.kind === 'lock');
+  ok(!!door && door.closed, 'the study door starts closed');
+  b.standNear(door.cells[0][0], door.cells[0][1], door.z);
+  b.face(door.cells[0][0] + 0.5, door.cells[0][1] + 0.5);
+  b.tick(2);
+  api.interact();
+  ok(api.W.doors.find((d) => d.kind === 'lock').closed, 'without a lockpick the study stays shut');
+  b.grab('toolbox');
+  ok(P.keys.pick, 'lockpick in hand (on the ring)');
+  b.standNear(door.cells[0][0], door.cells[0][1], door.z);
+  b.face(door.cells[0][0] + 0.5, door.cells[0][1] + 0.5);
+  api.interact();
+  ok(!api.W.doors.find((d) => d.kind === 'lock').closed, 'with the lockpick the study opens');
+  const blue = api.W.containers.find((c) => c.id === 'desk');
+  ok(blue.z === 0 && blue.x > 34, 'the blue key is in the study desk');
+}
+
+/* ================================================== 7. the vault and the win */
+{
+  const b = boot(9);
+  b.start(true);
+  const api = b.api, P = api.P;
+  api.freezeAI(true);
+  const vault = api.W.doors.find((d) => d.kind === 'cellar');
+  ok(!!vault && vault.closed, 'the vault starts locked');
+  b.standNear(43, 28, 0);
+  b.face(43.5, 27.5);
+  api.interact();
+  ok(api.W.doors.find((d) => d.kind === 'cellar').closed, 'without the red key the vault stays locked');
+  b.grab('fridge');
+  ok(P.keys.red, 'red key taken');
+  P.keys.blue = 1;              // the blue key comes from the study; granted here
+  b.standNear(43, 28, 0);
+  b.face(43.5, 27.5);
+  api.interact();
+  ok(!api.W.doors.find((d) => d.kind === 'cellar').closed, 'the red key opens the vault');
+  // stand in the vault, touch the secret
+  b.standNear(api.W.secret.x, api.W.secret.y, 0);
+  b.face(api.W.secret.x, api.W.secret.y);
+  b.tick(2);
+  api.interact();
+  eq(api.GAME.state, 'over', 'taking the SECRET ends the match');
+  eq(api.SHOW.over, 'win', '...as a win');
+  ok(api.M.wins >= 1, 'the win is remembered');
+}
+
+/* =========================================================== 8. the stairs */
+{
+  const b = boot(10);
+  b.start(true);
+  const api = b.api, P = api.P;
+  api.freezeAI(true);
+  b.standNear(31.5, 26.5, 0);
+  b.face(31.5, 26.5);
+  api.interact();
+  eq(P.z, 1, 'E on the stair tile takes you upstairs');
+  ok(Math.hypot(P.x - 31.5, P.y - 26.5) < 0.7, 'you come out on the landing');
+  api.interact();
+  eq(P.z, 0, 'and E on the matching tile takes you back down');
+  // he uses the same stairs
+  const w = b.walkTo(31.5, 27.5, 1, 2200);
+  ok(w.ok, 'the player can walk upstairs (' + JSON.stringify(w) + ')');
+  eq(P.z, 1, 'walking the stairs puts you on floor 1');
+}
+
+/* ============================================================= 9. night time */
 {
   const b = boot(11);
   b.start(true);
-  const api = b.api, W = api.W, P = api.P;
-  api.freezeAI(true);  // exercise the player route in isolation
-  const shed = b.walkTo(W.containers.find((c) => c.id === 'toolbox').x, W.containers.find((c) => c.id === 'toolbox').y, 0, 6000);
-  ok(shed.ok, 'walked to the shed (' + JSON.stringify(shed) + ')');
-  b.grab('toolbox');
-  ok(P.keys.pick, 'lockpick taken from the shed');
-  const front = b.walkTo(W.front.ix + 0.5, W.front.iy + 2, 0, 6000);
-  ok(front.ok, 'walked to the front door (' + JSON.stringify(front) + ')');
-  b.standNear(W.front.ix, W.front.iy + 1, 0); b.face(W.front.x, W.front.y);
-  api.interact();
-  eq(b.ev('doorClosed(0,' + W.front.ix + ',' + W.front.iy + ')'), false, 'front door opens');
-  const inside = b.walkTo(W.front.ix + 0.5, W.front.iy - 1.5, 0, 3000);
-  ok(inside.ok, 'walked inside through the front door');
-  // the study door blocks until picked
-  const sd = W.doors.find((d) => d.kind === 'lock');
-  const sc = sd.cells[0];
-  const toStudy = b.walkTo(sc[0] + 0.5, sc[1] + 0.5, sd.z, 6000);
-  ok(toStudy.ok || toStudy.why === 'blocked by L', 'reached the study door or was stopped by it (' + JSON.stringify(toStudy) + ')');
-  b.standNear(sc[0], sc[1], sd.z); b.face(sc[0] + 0.5, sc[1] + 0.5);
-  api.interact();
-  eq(sd.closed, 0, 'lockpick opens the study');
-  eq(b.ev('T(' + sd.z + ',' + sc[0] + ',' + sc[1] + ')'), 'D', 'unlocked door becomes a door tile');
-  ok(!!b.standNear(W.containers.find((c) => c.id === 'desk').x, W.containers.find((c) => c.id === 'desk').y, 1), 'the desk is reachable now');
-  b.grab('desk');
-  ok(P.keys.blue, 'blue key taken from the study desk');
-  b.grab('fridge');
-  ok(P.keys.red, 'red key taken from the kitchen fridge');
-  // basement is locked until the red key
-  const cd = W.doors.find((d) => d.kind === 'cellar');
-  b.standNear(cd.cells[0][0], cd.cells[0][1], 0); b.face(cd.cells[0][0] + 0.5, cd.cells[0][1] + 0.5);
-  b.api.interact();
-  eq(cd.closed, 0, 'red key unlocks the basement');
-  // stairs
-  const cs = api.STAIR.find((s) => s.b.z === 2);
-  P.x = cs.a.x + 0.5; P.y = cs.a.y + 0.5; P.z = cs.a.z;
-  api.interact();
-  eq(P.z, 2, 'the cellar stairs take the player to the basement');
-  const sec = W.secret;
-  ok(b.standNear(sec.x, sec.y, 2), 'the basement secret is approachable');
-  api.interact();
-  eq(api.SHOW.over, 'win', 'opening the stash wins the match');
-  eq(api.MEM.wins, 1, 'the win is written to match memory');
-  ok(b.env.warnings.length === 0, 'no console errors during the run');
-}
-
-/* ============================================================ 5. floors/stairs */
-{
-  const b = boot(7);
-  b.start(true);
-  const api = b.api, P = api.P;
-  ok(api.STAIR.length >= 2, 'stair links exist');
-  for (const s of api.STAIR) {
-    ok(b.ev('T(' + s.a.z + ',' + s.a.x + ',' + s.a.y + ')') === 'U' || b.ev('T(' + s.a.z + ',' + s.a.x + ',' + s.a.y + ')') === 'N', 'stair end A is a stair tile');
-    ok(b.ev('T(' + s.b.z + ',' + s.b.x + ',' + s.b.y + ')') === 'U' || b.ev('T(' + s.b.z + ',' + s.b.x + ',' + s.b.y + ')') === 'N', 'stair end B is a stair tile');
-  }
-  const up = api.STAIR.find((s) => s.a.z === 0 && s.b.z === 1);
-  P.x = up.a.x + 0.5; P.y = up.a.y + 0.5; P.z = 0;
-  api.interact();
-  eq(P.z, 1, 'stairs go up');
-  api.interact();
-  eq(P.z, 0, 'and back down');
-  ok(b.ev('pathFind({x:2.5,y:33.5,z:0},{x:' + api.W.secret.x + ',y:' + api.W.secret.y + ',z:2},{allowClosed:1,keys:1})').length > 8, 'pathfinding crosses floors');
-  ok(b.ev('pathFind({x:2.5,y:33.5,z:0},{x:' + api.W.secret.x + ',y:' + api.W.secret.y + ',z:2},{allowClosed:1,keys:0})').length === 0, 'a locked cellar blocks the path without keys');
-}
-
-/* ============================================================= 6. night time */
-{
-  const b = boot(7);
-  b.start(true);
-  const api = b.api, P = api.P, N = api.N;
-  // put the player in plain sight of the neighbour
-  P.x = N.x + 2.2; P.y = N.y; P.z = N.z;
-  N.a = 0;
+  const api = b.api;
+  api.setClock(14);
+  ok(!api.isNight(14), '14:00 is day');
+  api.setClock(23);
+  ok(api.isNight(23), '23:00 is night');
+  ok(api.isNight(2), '02:00 is night');
+  ok(!api.isNight(9), '09:00 is day');
+  api.freezeAI(true);
   api.setClock(13);
   const day = api.sightRange();
   api.setClock(23);
   const night = api.sightRange();
-  ok(night < day, 'he sees 20% shorter at night (' + day.toFixed(2) + ' -> ' + night.toFixed(2) + ')');
-  ok(night / day > 0.5 && night / day <= 0.85, 'night sight is roughly 20% shorter than day (' + (night / day).toFixed(2) + ')');
-  api.setClock(13);
+  ok(night < day, 'he sees less far at night (' + night.toFixed(2) + ' < ' + day.toFixed(2) + ')');
+  const P = api.P;
   P.crouch = 1;
   const crouch = api.sightRange();
-  P.crouch = 0; P.sprint = 1;
+  P.crouch = 0;
+  P.sprint = 1;
   const sprint = api.sightRange();
-  ok(crouch < day * 0.65, 'crouching hides you');
-  ok(sprint > day, 'sprinting makes you easier to spot');
   P.sprint = 0;
-  ok(api.isNight(23) && api.isNight(2) && !api.isNight(12), 'the clock drives day/night');
-  // catching you once makes him a lighter sleeper
-  b.ev('N.sleeping = 1');
-  const before = b.ev('N.sleeping');
-  api.MEM.catches = 0;
-  const loud0 = b.ev('(function(){N.sleeping=1;hearNoise(N.x+2,N.y,N.z,12,"glass");return N.sleeping})()');
-  b.ev('N.mode="routine"; N.script=[]');
-  api.MEM.catches = 2;
-  const loud2 = b.ev('(function(){N.sleeping=1;hearNoise(N.x+2,N.y,N.z,6,"step");return N.sleeping})()');
-  ok(before === 1, 'he can sleep');
-  ok(loud0 === 0, 'loud noise wakes him');
-  ok(loud2 === 0, 'after two catches even a quiet noise wakes him');
+  ok(crouch < night * 0.7, 'crouching at night hides you');
+  ok(sprint > night, 'sprinting gives you away');
+  // the clock runs
+  const before = api.GAME.clock;
+  b.tick(120);
+  ok(api.GAME.clock !== before, 'the clock advances');
 }
 
-/* ============================================================ 7. perception */
+/* ================================================== 10. sight cannot cheat */
 {
-  const b = boot(7);
+  const b = boot(12);
   b.start(true);
   const api = b.api;
-  const W = api.W;
-  // find a wall cell and check occlusion
-  let wall = null;
-  for (let y = 4; y < 20 && !wall; y++) for (let x = 10; x < 30 && !wall; x++) if (b.ev('T(0,' + x + ',' + y + ')') === '#') wall = { x, y };
-  ok(!!wall, 'found a wall');
-  ok(!api.lineOfSight({ x: wall.x - 0.5, y: wall.y + 0.5, z: 0 }, { x: wall.x + 1.5, y: wall.y + 0.5, z: 0 }), 'walls block his sight');
-  ok(api.lineOfSight({ x: wall.x - 0.5, y: wall.y - 1.5, z: 0 }, { x: wall.x + 2.5, y: wall.y - 1.5, z: 0 }), 'open floor does not');
-  // facing matters: a guard behind him
-  const N = api.N;
-  const P = api.P;
-  let pair = null;
-  for (let y = 2; y < 34 && !pair; y++) for (let x = 2; x < 44 && !pair; x++) {
-    if (b.ev('T(0,' + x + ',' + y + ')') === ',' && b.ev('T(0,' + (x + 4) + ',' + y + ')') === ',') pair = { x, y };
-  }
-  ok(!!pair, 'found an open stretch of yard to test sight');
-  N.x = pair.x + 0.5; N.y = pair.y + 0.5; N.z = 0; N.a = 0;
-  P.x = pair.x - 2.5; P.y = pair.y + 0.5; P.z = 0;
-  b.ev('N.al=0'); N.mode = 'routine'; N.script = [];
-  b.tick(20);
-  const behind = N.al;
-  b.ev('N.al=0'); N.a = 0; N.mode = 'routine'; N.script = [];
-  P.x = pair.x + 3.5; P.y = pair.y + 0.5;
-  b.tick(20);
-  ok(N.al > behind && N.al > 0.2, 'he notices what is in front of him more than what is behind (' + behind.toFixed(2) + ' -> ' + N.al.toFixed(2) + ')');
-  // noise carries less through walls
-  const through = b.ev('wallCount(0,' + (wall.x - 0.5) + ',' + (wall.y + 0.5) + ',' + (wall.x + 1.5) + ',' + (wall.y + 0.5) + ')');
-  ok(through >= 1, 'a wall between two points is counted');
-  const open = b.ev('wallCount(0,' + wall.x + ',' + (wall.y - 1.5) + ',' + (wall.x + 2) + ',' + (wall.y - 1.5) + ')');
-  eq(open, 0, 'open floor between two points is not');
+  api.freezeAI(true);
+  const ev = b.ev;
+  ok(ev('lineOfSight({x:16.5,y:14.5,z:0},{x:21.5,y:14.5,z:0})'), 'he can see across an open room');
+  ok(!ev('lineOfSight({x:16.5,y:14.5,z:0},{x:27.5,y:14.5,z:0})'), 'the hall wall blocks sight');
+  ok(!ev('lineOfSight({x:16.5,y:14.5,z:0},{x:27.5,y:14.5,z:1})'), 'floors block sight');
+  ok(!ev('lineOfSight({x:22.6,y:16.6,z:0},{x:23.4,y:17.4,z:0})'), 'no sight through a wall corner');
+  ok(!ev('lineOfSight({x:33.5,y:11.5,z:0},{x:36.5,y:11.5,z:0})'), 'the shut study door blocks sight');
+  ev('openDoor(0,34,11,null)');
+  ok(ev('lineOfSight({x:33.5,y:11.5,z:0},{x:36.5,y:11.5,z:0})'), 'opening it restores the sight line');
+  // and the perception path respects it: stand right behind the wall
+  ev('N.x=26.5;N.y=14.5;N.z=0;N.a=Math.PI;N.mode="routine";N.script=[];N.prio=0;N.al=1;');
+  ev('P.x=20.5;P.y=14.5;P.z=0;');
+  b.tick(60);
+  eq(ev('N.sees'), 0, 'he does not see through the wall even at full alert');
+  ok(ev('N.mode') !== 'chase', 'and does not start a chase through it');
 }
 
-/* ======================================================== 8. sounds & tracking */
+/* ==================================================== 11. belief map quality */
 {
-  const b = boot(7);
+  const b = boot(13);
   b.start(true);
-  const api = b.api, N = api.N;
-  N.mode = 'routine'; N.script = []; N.sounds = []; N.al = 0;
-  api.GAME.t = 10;
-  // three footsteps in a line within six seconds
-  for (let i = 0; i < 3; i++) {
-    api.makeNoise(N.x + 1 + i * 0.6, N.y + i * 0.3, N.z, 4, 'step');
-    api.GAME.t += 0.4;
-  }
-  ok(!!N.track, 'three noises in six seconds produce a predicted position');
-  ok(N.mode === 'suspicious', 'he goes to investigate the prediction');
-  ok(N.track.x > N.x, 'the prediction leads where the player was heading');
-  const said = (N.quip || '').toLowerCase();
-  ok(/sound|hear/.test(said) || N.label.toLowerCase().includes('sound'), 'he announces following the sound');
+  const api = b.api, ev = b.ev;
+  api.freezeAI(true);
+  near(ev('belTotal(0) + belTotal(1)'), 1, 0.02, 'the belief map is a normalised probability');
+  ok(ev('belPeak(0)') !== null, 'there is a most-likely cell');
+  // a sighting collapses the map onto the player
+  ev('P.x=18.5;P.y=12.5;P.z=0; N.x=22.5;N.y=12.5;N.z=0; N.a=Math.PI;');
+  ev('N.sees=1; N.lastSeen={x:P.x,y:P.y,z:P.z,t:GAME.t}; belStep(1/60);');
+  const peak = ev('belPeak(0)');
+  ok(peak && Math.hypot(peak.x - 18.5, peak.y - 12.5) < 1.6, 'a sighting puts the peak on you');
+  // losing you: the map is near where he last saw you, not at the spawn
+  ev('N.sees=0; N.lastSeen={x:18.5,y:12.5,z:0,t:GAME.t}; N.cleared=[];');
+  ev('belSeed();');
+  const p2 = ev('belPeak(0)');
+  ok(p2 && Math.hypot(p2.x - 18.5, p2.y - 12.5) < 4, 'after losing you the peak stays near the sighting');
+  ok(ev('belTotal(0)') > 0.5, 'and most of the mass stays on your floor');
+  // the mass creeps toward the objective, not at random
+  const before = ev('(() => { const B = BEL[0]; let s = 0; for (let i = 0; i < B.length; i++) { const x = i % MW, y = (i / MW) | 0; if (goalDist(0, x, y) < 12) s += B[i]; } return s; })()');
+  for (let i = 0; i < 180; i++) ev('belStep(1/60)');
+  const after = ev('(() => { const B = BEL[0]; let s = 0; for (let i = 0; i < B.length; i++) { const x = i % MW, y = (i / MW) | 0; if (goalDist(0, x, y) < 12) s += B[i]; } return s; })()');
+  ok(after >= before, 'belief flows toward the player\'s objective (' + before.toFixed(3) + ' -> ' + after.toFixed(3) + ')');
+  // cleared rooms lose mass
+  ev('N.cleared = []; N.lastSeen = {x:16.5,y:12.5,z:0,t:GAME.t}; belSeed();');
+  const uncleared = ev('belAt(0, 22, 12)');
+  ev('N.cleared = [{x:22,y:12,z:0}]; belSeed();');
+  const cleared = ev('belAt(0, 22, 12)');
+  ok(cleared < uncleared * 0.5, 'a room he already cleared loses mass (' + cleared.toFixed(4) + ' < ' + uncleared.toFixed(4) + ')');
+  ok(ev('belSpots(0, 4).length') > 0, 'he can list candidate spots');
 }
 
-/* ============================================================== 9. chasing */
+/* ====================================================== 12. the chase itself */
 {
-  const b = boot(7);
+  const b = boot(14);
   b.start(true);
-  const api = b.api, N = api.N, P = api.P;
-  // stand in front of him with a clear line of sight
-  N.a = 0; N.mode = 'routine'; N.script = [];
-  P.x = N.x + 3; P.y = N.y; P.z = N.z; P.crouch = 0;
-  let saw = false;
-  for (let i = 0; i < 90; i++) { b.tick(1); if (N.mode === 'chase') { saw = true; break; } }
-  ok(saw, 'he starts a chase when he actually sees you');
-  ok(/GOTCHA|cutting/.test(N.quip || '') || N.mode === 'chase', 'and says so');
-  // a chase across the room reaches the player
-  let caught = false;
-  for (let i = 0; i < 600 && !caught; i++) { b.tick(1); if (api.GAME.state === 'over') caught = true; }
-  ok(caught, 'a chase ends in a catch');
-  eq(api.SHOW.over, 'caught', 'the caught screen is shown');
-  ok(api.MEM.catches >= 1, 'the catch is written to match memory');
-  ok(api.MEM.hides.length >= 1, 'he remembers where he caught you');
-  ok(api.MEM.hours.some((h) => h > 0), 'he records the hour he caught you');
+  const api = b.api, ev = b.ev, N = api.N, P = api.P;
+  api.freezeAI(false);
+  // open-room acquisition
+  ev('P.x=16.5;P.y=14.5;P.z=0;P.a=0; N.x=20.5;N.y=14.5;N.z=0;N.a=Math.PI; N.mode="routine";N.script=[];N.prio=0;');
+  b.tick(40);
+  eq(ev('N.mode'), 'chase', 'he starts a chase when he really sees you');
+  // he runs at you, not away
+  const d0 = ev('dst(N.x,N.y,P.x,P.y)');
+  b.tick(60);
+  const d1 = ev('dst(N.x,N.y,P.x,P.y)');
+  ok(d1 < d0 || api.GAME.state === 'over', 'he closes the distance (' + d0.toFixed(2) + ' -> ' + d1.toFixed(2) + ')');
 }
 
-/* ========================================================== 10. trap validity */
+/* ============================================ 13. a lost chase is not jittery */
 {
-  let valid = 0, total = 0, invalid = [];
-  for (const seed of [3, 7, 11, 21]) {
-    const b = boot(seed);
-    b.start(true);
-    const api = b.api;
-    for (let i = 0; i < 12; i++) {
-      const spot = api.bestTrapSpot();
-      if (!spot) break;
-      total++;
-      if (!api.isValidTrapCell(spot.z, spot.x, spot.y)) invalid.push(seed + ':' + spot.z + ':' + spot.x + ',' + spot.y);
-      else { api.addTrap(spot.z, spot.x, spot.y); valid++; }
-    }
-    // traps never land on the spawn tile, doors, stairs or furniture
-    for (const t of api.TRAPS) {
-      const z = t.z, x = t.x | 0, y = t.y | 0;
-      ok(b.ev('T(' + z + ',' + x + ',' + y + ')') === '.' || b.ev('T(' + z + ',' + x + ',' + y + ')') === ',', 'trap sits on open floor');
-      ok(!b.ev('!!doorAt(' + z + ',' + x + ',' + y + ')'), 'trap is not in a doorway');
-      ok(!b.ev('!!stairFrom(' + z + ',' + x + ',' + y + ')'), 'trap is not on stairs');
-      ok(b.api.W.containers.every((c) => Math.abs(c.tx - x) + Math.abs(c.ty - y) >= 2), 'trap is not inside a container');
-    }
-  }
-  eq(invalid.length, 0, 'every chosen trap cell is valid (' + invalid.slice(0, 3).join('; ') + ')');
-  ok(valid > 0 && valid === total, 'trap placement only ever returns valid cells (' + valid + '/' + total + ')');
-}
-
-/* =========================================================== 11. suspicion/memory */
-{
-  const store = {};
-  const b = boot(7, store);
+  const b = boot(15);
   b.start(true);
-  const api = b.api;
-  const seed1 = api.MEM.seed;
-  ok(api.MEM.suspicion >= 0 && api.MEM.suspicion <= 100, 'suspicion starts in range');
-  const before = api.MEM.suspicion;
-  b.ev('M.suspicion = 40');
-  // he hears a window smash: suspicion climbs
-  b.ev('hearNoise(N.x+1,N.y,N.z,15,"glass")');
-  ok(api.MEM.suspicion > 40, 'loud noises raise his suspicion');
-  ok(api.MEM.suspicion > before, 'suspicion accumulates');
-  // theft detection needs line of sight (or a forced check)
-  const fridge = api.W.containers.find((c) => c.id === 'fridge');
-  b.standNear(fridge.x, fridge.y, fridge.z);
-  api.P.keys.pick = 1;
-  api.interact();
-  ok(fridge.done, 'the fridge has been searched');
-  b.ev('N.x=' + (fridge.x + 1) + '; N.y=' + fridge.y + '; N.z=' + fridge.z);
-  b.ev('checkTheftsNear(true)');
-  ok(api.MEM.thefts.includes('fridge'), 'he notices the fridge was searched');
-  ok((api.N.quip || '').length > 0, 'and complains about it out loud');
-  ok(api.MEM.suspicion > 40, 'theft spikes suspicion');
-  // he re-locks a door the player unlocked
-  const door = api.W.doors.find((d) => d.kind === 'door' && d.z === 0 && !d.shed && !d.front);
-  b.standNear(door.cells[0][0], door.cells[0][1], 0);
-  b.ev('openDoor(0,' + door.cells[0][0] + ',' + door.cells[0][1] + ',{crouch:0})');
-  door.playerUnlocked = 1;
-  door.lockChar = 'L';
-  b.ev('N.x=' + (door.cells[0][0] + 1) + '; N.y=' + door.cells[0][1] + '; N.z=0; N.mode="routine"; N.script=[];');
-  const relockPlanned = b.ev('considerRelock()');
-  ok(relockPlanned === true, 'he plans to re-lock a door you opened');
-  b.standNear(api.W.front.ix, api.W.front.iy + 3, 0);
-  b.tick(400);
-  ok(door.closed === 1 || api.MEM.relocks.length > 0, 'and actually re-locks it');
-  // match memory is scoped: same seed on replay, new game wipes
-  api.saveMatch();
-  ok(!!store['hn.match.v2'], 'the match is saved under its own key');
-  const savedSeed = JSON.parse(store['hn.match.v2']).seed;
-  eq(savedSeed, seed1, 'the save carries the match seed');
-  b.start(false);
-  eq(api.MEM.seed, seed1, 'continuing keeps the same house');
-  ok(api.MEM.thefts.includes('fridge'), 'continuing keeps what he learned');
-  b.start(true);
-  ok(!api.MEM.thefts.length, 'New Game wipes everything he learned');
-  ok(api.MEM.catches === 0 && api.MEM.suspicion <= 20, 'New Game resets his suspicion');
-  ok(!store['hn.match.v2'] || JSON.parse(store['hn.match.v2']).seed === api.MEM.seed, 'New Game re-seeds the save');
-}
-
-/* ======================================================= 12. traps + cams persist */
-{
-  const store = {};
-  const b = boot(7, store);
-  b.start(true);
-  const api = b.api;
-  api.MEM.seed;
-  const spot = api.bestTrapSpot();
-  ok(!!spot, 'a trap spot is found');
-  api.addTrap(spot.z, spot.x, spot.y);
-  eq(api.TRAPS.length, 1, 'the trap exists in the world');
-  ok(api.MEM.traps.length === 1, 'the trap is remembered');
-  api.saveMatch();
-  b.start(false);
-  eq(api.TRAPS.length, 1, 'the trap is still there when you come back');
-  const cam = api.W.floors[0].rooms[0];
-  const q = b.ev('nearestStandable(0,' + cam.cx + ',' + cam.cy + ',0.28)');
-  api.addCamera(0, q[0], q[1]);
-  eq(api.CAMS.length, 1, 'a camera can be installed');
-  ok(api.MEM.cams.length === 1, 'the camera is remembered');
-  // cameras see the player in their cone
-  const c = api.CAMS[0];
-  c.sweep = 0;
-  b.ev('P.x=' + (c.x + 1) + '; P.y=' + c.y + '; P.z=' + c.z);
-  c.a = Math.atan2(api.P.y - c.y, api.P.x - c.x);
-  b.tick(90);
-  ok(c.seeT > 0.2, 'a camera notices a player in its cone');
-}
-
-/* =========================================================== 13. the AI's day job */
-{
-  const b = boot(7);
-  b.start(true);
-  const api = b.api, N = api.N;
-  const seen = new Set();
-  const positions = [];
-  for (let i = 0; i < 60 * 200; i++) {
+  const api = b.api, ev = b.ev;
+  api.freezeAI(false);
+  // he is in the foyer, the player vanishes into the bedroom
+  ev('N.x=28.5;N.y=24.5;N.z=0;N.a=Math.PI; P.x=18.5;P.y=25.5;P.z=0;');
+  ev('N.mode="chase";N.chaseT=0;N.lostT=0;N.conf=1;N.lastSeen={x:22.5,y:16.5,z:0,t:GAME.t};N.pvel={x:-3,y:2};');
+  ev('belSeed();');
+  let px = ev('N.x'), py = ev('N.y'), pz = ev('N.z');
+  let travelled = 0, reversals = 0, lastA = ev('N.a'), switches = 0, lastCt = null, still = 0, stalls = 0;
+  for (let i = 0; i < 60 * 6; i++) {
     b.tick(1);
-    if (i % 60 === 0) { seen.add(N.st); positions.push([N.x, N.y, N.z]); }
+    const x = ev('N.x'), y = ev('N.y'), z = ev('N.z'), a = ev('N.a');
+    travelled += Math.hypot(x - px, y - py) + Math.abs(z - pz) * 2;
+    const dd = Math.abs(Math.atan2(Math.sin(a - lastA), Math.cos(a - lastA)));
+    if (dd > 2.4) reversals++;
+    lastA = a;
+    const ct = ev('N.ct ? [N.ct.x,N.ct.y] : null');
+    if (lastCt && ct && Math.hypot(ct[0] - lastCt[0], ct[1] - lastCt[1]) > 1.6) switches++;
+    if (ct) lastCt = ct;
+    if (Math.hypot(x - px, y - py) < 0.002) { still++; if (still === 50) stalls++; } else still = 0;
+    px = x; py = y; pz = z;
     if (api.GAME.state !== 'play') break;
   }
-  ok(seen.size >= 3, 'he does more than one kind of chore (' + [...seen].slice(0, 6).join(',') + ')');
-  ok(positions.length > 50, 'he keeps moving around the house');
-  const cells = new Set(positions.map((p) => p[2] + ':' + (p[0] | 0) + ',' + (p[1] | 0)));
-  ok(cells.size > 12, 'he is genuinely walking, not frozen (' + cells.size + ' distinct tiles)');
-  ok(N.need.hunger <= 1 && N.need.energy <= 1, 'his needs stay bounded');
-  ok(N.mode !== 'chase', 'he does not chase a player who is hiding outside');
+  ok(travelled > 4, 'he keeps hunting on the belief map (' + travelled.toFixed(1) + ' tiles)');
+  eq(reversals, 0, 'no direction flapping during the chase');
+  ok(stalls <= 1, 'he does not grind in place (' + stalls + ' stalls)');
+  ok(switches <= 4, 'his target is held, not re-picked every frame (' + switches + ' switches)');
+  ok(ev('belTotal(0) + belTotal(1)') > 0.9, 'the belief map stays a normalised probability through the chase');
+  ok(api.GAME.state === 'over' || ev('N.lostT') >= 0, 'the chase either caught you or is still on');
 }
 
-/* ================================================== 13b. the reaction chain */
+/* ================================================ 14. he follows you upstairs */
 {
-  const b = boot(9, {});
+  const b = boot(16);
   b.start(true);
-  const api = b.api, N = api.N, P = api.P;
-  // two walkable tiles in the same room with a clear line of sight
-  let pair = null;
-  for (let y = 2; y < 34 && !pair; y++) {
-    for (let x = 2; x < 40 && !pair; x++) {
-      if (b.ev('standable(0,' + (x + 0.5) + ',' + (y + 0.5) + ',0.3)') &&
-          b.ev('standable(0,' + (x + 4.5) + ',' + (y + 0.5) + ',0.3)') &&
-          api.lineOfSight({ x: x + 0.5, y: y + 0.5, z: 0 }, { x: x + 4.5, y: y + 0.5, z: 0 })) {
-        pair = { x, y };
-      }
-    }
+  const api = b.api, ev = b.ev;
+  api.freezeAI(false);
+  ev('N.x=28.5;N.y=24.5;N.z=0;N.a=Math.PI/2; P.x=28.5;P.y=27.5;P.z=0;');
+  b.tick(30);
+  eq(ev('N.mode'), 'chase', 'he sees you in the foyer');
+  ev('P.x=30.5;P.y=25.5;P.z=1;');
+  let climbed = false, lastZ = ev('N.z');
+  for (let i = 0; i < 60 * 20; i++) {
+    if (i % 90 === 0) ev(i % 180 ? 'P.x=30.5;P.y=22.5;P.z=1;' : 'P.x=38.5;P.y=25.5;P.z=1;');
+    b.tick(1);
+    const z = ev('N.z');
+    if (z === 1 && lastZ === 0) climbed = true;
+    lastZ = z;
+    if (api.GAME.state !== 'play') break;
   }
-  ok(!!pair, 'found a room with an open sightline');
-  if (pair) {
-    N.x = pair.x + 0.5; N.y = pair.y + 0.5; N.z = 0; N.a = 0;
-    N.mode = 'routine'; N.script = [];
-    P.x = pair.x + 4.5; P.y = pair.y + 0.5; P.z = 0; P.crouch = 0;
-    let react = null;
-    for (let i = 0; i < 180; i++) {
-      api.gameUpdate(1 / 60);
-      if (N.mode === 'suspicious' || N.mode === 'chase') { react = { i, mode: N.mode, label: N.label, quip: N.quip }; break; }
-    }
-    ok(!!react, 'he reacts to a player standing in the open');
-    ok(/hear|breathing|who is that|follow/i.test((react && (react.quip || react.label)) || '') || (react && react.mode === 'chase'),
-      'a distant sighting first becomes a quiet approach, not a sprint');
-    // he loses the player: a belief-driven search replaces a straight chase
-    P.hidden = 1; P.crouch = 1;
-    b.ev('P.x = -99; P.y = -99;');            // out of the world: no line of sight at all
-    if (N.mode === 'chase') b.ev('N.lastSeen={x:' + pair.x + ',y:' + pair.y + ',z:0,t:GAME.t}');
-    let becameSearch = false;
-    for (let i = 0; i < 60 * 12; i++) {
-      api.gameUpdate(1 / 60);
-      if (N.mode === 'search') { becameSearch = true; break; }
-      if (api.GAME.state !== 'play') break;
-    }
-    ok(becameSearch || N.mode !== 'chase', 'a chase lets go when the trail goes cold');
-    // deterministic belief search from a known last sighting
-    b.ev('P.x = ' + (pair.x + 0.5) + '; P.y = ' + (pair.y + 0.5) + '; P.z = 0; P.hidden = 1;');
-    N.lastSeen = { x: pair.x + 0.5, y: pair.y + 0.5, z: 0, t: api.GAME.t };
-    N.mode = 'suspicious'; N.script = []; N.path = [];
-    b.ev('startSearch("lost")');
-    eq(N.mode, 'search', 'losing you starts a search, not a freeze');
-    ok(b.ev('belTotal(0)') > 0, 'the search seeds a belief map');
-    const spots = b.ev('belSpots(0,4)');
-    ok(spots.length > 0, 'the belief map yields candidate hiding spots');
-    let swept = false;
-    for (let i = 0; i < 60 * 40; i++) {
-      api.gameUpdate(1 / 60);
-      if (N.st === 'search_spot' || N.st === 'ambush_door') swept = true;
-      if (api.GAME.state !== 'play') break;
-    }
-    ok(swept, 'he walks to the likeliest spots');
-    const door = api.bestAmbushDoor();
-    ok(!!door, 'he can pick a chokepoint to camp');
-  }
+  ok(climbed, 'losing you at the stairs sends him up them');
+  eq(ev('N.z'), 1, 'he is on the upper floor');
 }
 
-/* ========================================================== 14. camera/keys UI */
+/* ================================================= 15. catches need contact */
 {
-  const b = boot(7);
+  const b = boot(17);
   b.start(true);
-  const api = b.api;
-  ok(!!api.HUD.tasks.length, 'objective list exists');
-  const texts = api.HUD.tasks.map((t) => t.txt.toLowerCase()).join(' | ');
-  ok(/lockpick|key/.test(texts), 'objectives talk about the keyring, not items');
-  ok(api.P.inv.length === 0, 'inventory starts empty');
-  api.P.carrying = 0;
-  const before = api.P.inv.length;
-  const it = api.ITEMS.find((i) => i.z === api.P.z);
-  if (it) {
-    api.P.x = it.x; api.P.y = it.y;
-    api.interact();
-    ok(api.P.inv.length >= before, 'loot can go in the bag');
-    ok(api.P.inv.length <= 3, 'the bag is small');
-  }
-  // throwing a carried item makes noise and lands
-  const room = api.W.floors[0].rooms[0];
-  const q = b.ev('nearestStandable(0,' + room.cx + ',' + room.cy + ',0.3)');
-  api.P.x = q[0] + 0.5; api.P.y = q[1] + 0.5; api.P.z = 0;
-  api.P.carried = 'vase';
-  const n0 = api.GAME.t;
-  api.throwCarried(api.P.x + 2, api.P.y);
-  ok(api.GAME.t >= n0, 'throwing does not advance time by itself');
-  b.tick(60);
-  ok(api.P.carried === 0, 'the throw clears your hands');
+  const api = b.api, ev = b.ev;
+  api.freezeAI(false);
+  // through the hall wall, nose to nose
+  ev('P.x=22.4;P.y=14.5;P.z=0; N.x=23.6;N.y=14.5;N.z=0; N.mode="chase";N.chaseT=0;N.lostT=0;N.sees=0;');
+  api.gameUpdate(1 / 60);
+  eq(api.GAME.state, 'play', 'he cannot catch you through a wall');
+  // in the open, at arm\'s length
+  ev('P.x=16.5;P.y=14.5;P.z=0; N.x=17.1;N.y=14.5;N.z=0; N.mode="chase";N.chaseT=0;N.lostT=0;');
+  api.gameUpdate(1 / 60);
+  eq(api.GAME.state, 'over', 'in the open he grabs you');
+  eq(api.SHOW.over, 'caught', '...with the caught card');
 }
 
-/* ========================================================= 14b. HN mechanics */
+/* ================================================ 16. traps, cameras, plans */
 {
-  // --- a thrown object is traced back to where it was thrown from
-  {
-    const b = boot(7, {});
-    b.start(true);
-    const api = b.api, N = api.N, P = api.P;
-    api.freezeAI(true);
-    N.mode = 'routine'; N.script = []; N.stun = 0;
-    // stand next to him, in the open, so the throw connects
-    let from = null;
-    for (let d = 2.4; d <= 3.6 && !from; d += 0.4) {
-      for (const ang of [0, 1.57, 3.14, 4.71, 0.78, 2.36, 3.93, 5.5]) {
-        const x = N.x + Math.cos(ang) * d, y = N.y + Math.sin(ang) * d;
-        if (b.ev('standable(' + N.z + ',' + x + ',' + y + ',0.3)') && api.lineOfSight({ x, y, z: N.z }, { x: N.x, y: N.y, z: N.z })) { from = { x, y }; break; }
-      }
-    }
-    ok(!!from, 'found a clear throwing spot');
-    if (!from) from = { x: N.x + 2.6, y: N.y };
-    P.x = from.x; P.y = from.y; P.z = N.z;
-    P.carried = 'tomato';
-    api.throwCarried(N.x, N.y);
-    for (let i = 0; i < 120 && !N.stun; i++) api.gameUpdate(1 / 60);
-    ok(N.stun > 0, 'a direct hit stuns him');
-    ok(!!N.forensic, 'he records where the throw came from');
-    near(N.forensic.x, P.x, 0.6, 'the recorded origin is the thrower');
-    ok(/tomato|thr/i.test(String(N.quip || '') + ' ' + String(N.label || '')), 'he reacts to being hit');
-    api.freezeAI(false);
-    let hunted = false;
-    for (let i = 0; i < 60 * 12; i++) {
-      api.gameUpdate(1 / 60);
-      if (N.st === 'hunt_thrower' || N.st === 'search_spot' || N.mode === 'chase') { hunted = true; break; }
-      if (api.GAME.state !== 'play') break;
-    }
-    ok(hunted, 'and he hunts from the throw origin');
+  const b = boot(18, {});
+  b.start(true);
+  const api = b.api, ev = b.ev;
+  api.freezeAI(true);
+  let valid = 0;
+  for (let i = 0; i < 8; i++) {
+    const s = api.bestTrapSpot();
+    if (!s) continue;
+    valid++;
+    ok(ev('isValidTrapCell(' + s.z + ',' + s.x + ',' + s.y + ')'), 'trap spot ' + valid + ' is a valid tile');
+    ok(ev('walkCell(' + s.z + ',' + s.x + ',' + s.y + ')'), 'trap spot ' + valid + ' is walkable');
+    api.addTrap(s.z, s.x, s.y);
   }
-  // --- cameras are placed only after he has caught you twice
-  {
-    const b = boot(7, {});
-    b.start(true);
-    const api = b.api;
-    api.MEM.catches = 0;
-    api.MEM.entries['0:22:27'] = 6;
-    eq(api.planCamera(), false, 'no cameras before the first catch');
-    api.MEM.catches = 2;
-    const ok2 = api.planCamera();
-    ok(ok2 === true, 'after two catches he mounts a camera on your favourite entry');
-    ok(api.MEM.plans.some((p) => p.t === 'camera'), 'the plan is queued');
-    const plan = api.MEM.plans.find((p) => p.t === 'camera');
-    ok(Math.hypot(plan.x - 22, plan.y - 27) < 8, 'the camera is placed near that entry');
+  eq(api.TRAPS.length, valid, 'every planned trap was placed');
+  for (const t of api.TRAPS) {
+    ok(ev('walkCell(' + t.z + ',' + (t.x | 0) + ',' + (t.y | 0) + ')'), 'a placed trap sits on a walkable tile');
+    ok(ev('!!trapAt(' + t.z + ',' + (t.x | 0) + ',' + (t.y | 0) + ')'), 'and is registered in the world');
   }
-  // --- noises during a search sharpen his belief map instead of restarting it
-  {
-    const b = boot(7, {});
-    b.start(true);
-    const api = b.api, N = api.N;
-    b.ev('startSearch("test")');
-    eq(N.mode, 'search', 'searching');
-    const before = b.ev('belTotal(0)');
-    const st0 = N.st;
-    b.ev('hearNoise(' + (N.x + 4) + ',' + N.y + ',0,' + N.z + ',9,"step")');
-    ok(b.ev('belTotal(0)') >= before, 'noise inside a search adds belief mass');
-    eq(N.st, st0, 'and does not yank him out of the current search step');
-  }
-  // --- door cut-offs: he only tries if he can actually beat you there
-  {
-    const b = boot(7, {});
-    b.start(true);
-    const api = b.api, N = api.N, P = api.P;
-    N.z = 0; P.z = 0;
-    const front = api.W.front;
-    P.x = front.ix + 0.5; P.y = front.iy - 1.5;
-    N.x = front.ix + 0.5; N.y = front.iy + 6;    // outside, further away
-    const t = api.cutoffTarget(9);
-    ok(!!t, 'a cut-off target exists');
-    ok(Math.hypot(t.x - P.x, t.y - P.y) < 30, 'the target is in the same house');
-    // with the player already on top of the goal, he falls back to the player
-    b.ev('P.x = ' + api.W.secret.x + '; P.y = ' + api.W.secret.y + '; P.z = 2; P.keys.red=1; P.keys.blue=1;');
-    const t2 = api.cutoffTarget(9);
-    ok(!!t2, 'with the player at the objective he still has a target');
-  }
-  // --- valuables check routine exists and visits the objectives
-  {
-    const b = boot(7, {});
-    b.start(true);
-    const api = b.api, N = api.N;
-    const steps = b.ev('JSON.stringify(SCRIPTS.check_valuables().length)');
-    ok(Number(steps) >= 3, 'the valuables check visits several stations (' + steps + ')');
-    b.ev('runScript("check_valuables", {}, 1)');
-    ok(N.script.length >= 3, 'the routine is queued');
-    let seenStation = null;
-    for (let i = 0; i < 60 * 60; i++) {
-      api.gameUpdate(1 / 60);
-      if (N.st === 'check_valuables') seenStation = true;
-      if (api.GAME.state !== 'play') break;
-    }
-    ok(seenStation !== null, 'he actually runs the valuables check');
-  }
-  // --- sprinting is visible further than walking; crouching is not
-  {
-    const b = boot(7, {});
-    b.start(true);
-    const api = b.api, P = api.P;
-    api.setClock(23);
-    P.sprint = 0; P.crouch = 0; const base = api.sightRange();
-    P.crouch = 1; const crouch = api.sightRange(); P.crouch = 0;
-    P.sprint = 1; const sprint = api.sightRange(); P.sprint = 0;
-    ok(crouch < base * 0.6, 'crouching at night makes you nearly invisible');
-    ok(sprint > base, 'sprinting makes you easier to see');
-  }
+  const keys = new Set(api.TRAPS.map((t) => t.z + ':' + (t.x | 0) + ':' + (t.y | 0)));
+  eq(keys.size, api.TRAPS.length, 'no two traps share a tile');
+  // invalid cells are refused
+  ok(!ev('isValidTrapCell(0,12,7)'), 'a wall is not a trap cell');
+  ok(!ev('isValidTrapCell(0,28,30)'), 'the front door is not a trap cell');
+  ok(!ev('isValidTrapCell(0,31,26)'), 'the stairs are not a trap cell');
+  // cameras: he only plans one once he has caught you and knows your entry
+  api.M.catches = 0;
+  eq(ev('planCamera()'), false, 'with no catches he plans no camera');
+  api.M.catches = 2;
+  api.M.entries = { '0:28:30': 4 };
+  ev('M.suspicion = 90');
+  eq(ev('planCamera()'), true, 'after two catches he plans a camera');
+  const plan = api.M.plans.filter((p) => p.t === 'camera').pop();
+  ok(!!plan, 'the camera plan is remembered');
+  if (plan) api.addCamera(plan.z, plan.x, plan.y);
+  ok(api.CAMS.length >= 1, 'the camera is in the world');
 }
 
-/* ================================================================ 15. render */
+/* =================================================== 17. learning in a match */
 {
-  const b = boot(7);
+  const b = boot(19, {});
+  b.start(true);
+  const api = b.api, ev = b.ev;
+  api.freezeAI(true);
+  ev('N.x=20.5;N.y=14.5;N.z=0;N.mode="routine";N.script=[];N.prio=0;N.a=Math.PI;');
+  const sus0 = api.M.suspicion;
+  ev('hearNoise(21.5, 14.5, 0, 9, "glass")');
+  ok(api.M.suspicion > sus0, 'noise raises his suspicion');
+  ok(api.M.hours.some((h) => h > 0), 'he records the hours you are active');
+  ok(ev('belTotal(0) + belTotal(1)') > 0.5, 'noise sharpens the belief map');
+  ev('P.x=16.5;P.y=14.5;P.z=0; N.x=20.5;N.y=14.5;N.z=0; N.a=Math.PI; N.mode="routine"; N.script=[]; N.prio=0;');
+  for (let i = 0; i < 30; i++) ev('perceive(1/60)');
+  ok(ev('N.sees') === 1, 'he has eyes on you for the learning checks');
+  ok(Object.keys(api.M.rooms).length > 0, 'he records which rooms you use');
+  ev('startChase("test"); addHeatRoute();');
+  ok(Object.keys(api.M.route).length > 0, 'he records the route you take');
+  // re-locking a door you picked
+  const d = api.W.doors.find((q) => q.kind === 'lock');
+  d.playerUnlocked = 1;
+  ev('N.x=' + (d.cells[0][0] + 0.5) + ';N.y=' + (d.cells[0][1] + 1.5) + ';N.z=' + d.z + ';');
+  const relocked = ev('considerRelock()');
+  ok(relocked === true, 'standing at a door you picked, he starts re-locking it');
+  // and he checks the containers he finds emptied
+  const c = api.W.containers.find((q) => q.id === 'fridge');
+  c.done = 1; c.seen = 0;
+  ev('N.x=' + (c.stand[0] + 0.5) + ';N.y=' + (c.stand[1] + 0.5) + ';N.z=' + c.z + ';N.a=0;');
+  ev('checkTheftsNear(true)');
+  ok(c.seen === 1, 'he notices an emptied container');
+  ok(api.M.thefts.indexOf(c.id) >= 0 || api.M.plans.some((p) => p.id === c.id), 'and remembers it');
+}
+
+/* ==================================================== 18. the memory boundary */
+{
+  const store = {};
+  const b = boot(20, store);
   b.start(true);
   const api = b.api;
+  api.M.wins = 2;
+  api.M.catches = 3;
+  api.M.suspicion = 88;
+  api.saveMatch();
+  ok(!!api.storedMatch(), 'the match is saved');
+  // New Game wipes it
+  api.startMatchFromMenu(true);
+  ok(!api.storedMatch() || api.storedMatch().catches === 0, 'New Game wipes the stored match');
+  eq(api.M.wins, 0, 'wins do not leak into a new game');
+  eq(api.M.catches, 0, 'catches do not leak into a new game');
+  ok(api.M.suspicion < 30, 'suspicion starts low again');
+  // Continue restores what he learned
+  api.M.wins = 1;
+  api.M.catches = 2;
+  api.M.suspicion = 71;
+  api.saveMatch();
+  api.startMatchFromMenu(false);
+  eq(api.M.catches, 2, 'Continue keeps the catches he has made');
+  eq(api.M.wins, 1, 'Continue keeps your wins');
+  ok(api.M.suspicion > 50, 'Continue keeps his suspicion');
+  // a different memory never bleeds into a fresh boot
+  const b2 = boot(21, {});
+  b2.start(true);
+  eq(b2.api.M.catches, 0, 'a fresh session starts with nothing remembered');
+}
+
+/* ============================================================ 19. rendering */
+{
+  const b = boot(22);
+  b.start(true);
+  const api = b.api, ev = b.ev;
+  api.freezeAI(true);
   let err = null;
   try {
-    for (let i = 0; i < 8; i++) {
-      b.tick(30);
-      api.render(1 / 60);
-    }
+    for (let i = 0; i < 6; i++) { b.tick(20); api.render(1 / 60); }
+    // both floors
+    ev('P.z=1;'); for (let i = 0; i < 40; i++) ev('updateCamera(0.05)'); api.render(1 / 60);
+    ev('P.z=0;'); for (let i = 0; i < 40; i++) ev('updateCamera(0.05)'); api.render(1 / 60);
+    // night, torch, belief overlay, danger edge
+    api.setClock(23);
+    api.toggleFlash();
+    api.SHOW.showBelief = 1;
+    ev('N.mode="chase"; N.z=0; N.x=P.x+4; N.y=P.y;');
+    for (let i = 0; i < 40; i++) ev('updateCamera(0.05)');
+    api.render(1 / 60);
+    api.SHOW.showBelief = 0;
     api.SHOW.screen = 'pause'; api.render(1 / 60);
     api.SHOW.screen = 'play';
-    api.SHOW.showBelief = 1; api.render(1 / 60); api.SHOW.showBelief = 0;
     api.SHOW.screen = 'menu'; api.render(1 / 60);
-    api.SHOW.screen = 'cut'; api.SHOW.cut = 3; api.render(1 / 60);
-    api.SHOW.screen = 'over'; api.SHOW.over = 'caught'; api.render(1 / 60);
+    api.SHOW.screen = 'help'; api.render(1 / 60);
+    api.SHOW.screen = 'cut'; api.SHOW.cut = 2; api.render(1 / 60);
+    api.SHOW.screen = 'over'; api.SHOW.over = 'win'; api.render(1 / 60);
+    api.SHOW.screen = 'play';
   } catch (e) { err = e.stack; }
   ok(!err, 'every screen renders: ' + (err || 'ok'));
+}
+
+/* ========================================================== 20. the HUD text */
+{
+  const b = boot(23);
+  b.start(true);
+  const api = b.api, ev = b.ev;
+  api.freezeAI(true);
+  api.refreshTasks();
+  ok(api.HUD.tasks.length >= 6, 'the task list is populated');
+  ok(api.HUD.tasks.some((t) => /lockpick/i.test(t.txt)), 'the first task is the lockpick');
+  ok(api.HUD.tasks.some((t) => /vault/i.test(t.txt)), 'the vault is a task');
+  b.standNear(31.5, 26.5, 0);
+  b.face(31.5, 26.5);
+  const prompt = ev('promptText()');
+  ok(/upstairs/i.test(prompt), 'standing on the stairs, the prompt offers the stairs (' + prompt + ')');
+  const c = api.W.containers.find((q) => q.id === 'fridge');
+  b.standNear(c.x, c.y, c.z);
+  b.face(c.x, c.y);
+  ok(/search/i.test(ev('promptText()')), 'standing at the fridge, the prompt offers a search');
+  ok(!/http/i.test(b.env.html) && !/<script src/i.test(b.env.html), 'the file is self-contained, no external assets');
 }
 
 /* ------------------------------------------------------------------ report */

@@ -37,6 +37,7 @@ function newGame(seed) {
     stepT: 0, camo: 0, bobT: 0, lastSafe: { x: W.spawn.x, y: W.spawn.y, z: 0 },
   };
   initAI();
+  belSeed();               // a starting prior: he assumes you came in the front
   HUD.tasks = buildTasks();
   HUD.note = 'Get inside without waking him.';
   GAME.msg = ''; UI.msg = ''; UI.msgT = 0; UI.over = null; UI.screen = 'play';
@@ -161,7 +162,6 @@ function interact() {
   // stairs
   const st = stairFrom(z, P.x | 0, P.y | 0);
   if (st) { climbTo(st); return; }
-  // secret nook in basement
   // doors in front of you
   const d = doorAt(z, fx, fy);
   if (d) { useDoor(d, fx, fy); return; }
@@ -188,15 +188,15 @@ function aiSoundKey(c) { aiSay('Did I just hear my ' + c.label + '?'); }
 
 function useDoor(d, x, y) {
   if (d.kind === 'cellar') {
-    if (!d.closed) { say('The basement. Whatever he keeps down there is the point of all this.'); return; }
+    if (!d.closed) { say('The vault. Whatever he keeps in there is the point of all this.'); return; }
     if (!P.keys.red) { say('Locked. A red keyhole.'); makeNoise(P.x, P.y, P.z, 3, 'door'); return; }
     d.closed = 0; d.playerUnlocked = 1; d.lockChar = 'B';
     for (const [dx2, dy2] of d.cells) W.floors[d.z].G[dy2][dx2] = 'D';
     (M.needRelock = M.needRelock || []).push(d.z + ':' + d.cells[0][0] + ':' + d.cells[0][1]);
     saveMatch();
-    say('You unlocked the basement with the RED KEY.');
+    say('The RED KEY turns: the vault door is open.');
     makeNoise(P.x, P.y, P.z, 6, 'door');
-    aiSay('The basement?! No — not the basement!');
+    aiSay('The vault?! No — not the vault!');
     M.suspicion = Math.min(100, M.suspicion + 12);
     return;
   }
@@ -235,7 +235,7 @@ function climbTo(s) {
   P.z = s.z; P.x = s.x + 0.5; P.y = s.y + 0.5;
   makeNoise(P.x, P.y, P.z, 4.4, 'stairs');
   const r = roomAt(P.z, P.x, P.y);
-  say('You are ' + (P.z === 0 ? 'downstairs' : P.z === 1 ? 'upstairs' : 'in the basement') + '.');
+  say('You are ' + (P.z === 0 ? 'downstairs' : 'upstairs') + '.');
   GAME.shown['z' + P.z] = 1;
 }
 
@@ -322,8 +322,8 @@ function buildTasks() {
   t.push({ k: 'study', txt: 'Pick the study door lock', done: W.studyUnlocked || P.keys.blue });
   t.push({ k: 'blue', txt: 'Find the blue key (study desk)', done: P.keys.blue });
   t.push({ k: 'red', txt: 'Find the red key (kitchen fridge)', done: P.keys.red });
-  t.push({ k: 'cellar', txt: 'Unlock the basement', done: W.cellarOpen || P.z === 2 });
-  t.push({ k: 'secret', txt: 'Take what is in the basement', done: M.wins > 0 });
+  t.push({ k: 'cellar', txt: 'Unlock the vault (red key)', done: !!W.cellarOpen });
+  t.push({ k: 'secret', txt: 'Take the SECRET from the vault', done: M.wins > 0 });
   return t;
 }
 function insideHouse() {
@@ -334,7 +334,7 @@ function refreshTasks() {
   for (const t of HUD.tasks) {
     if (t.k === 'inside') t.done = P.z > 0 || insideHouse();
     if (t.k === 'study') t.done = !!W.studyOpen;
-    if (t.k === 'cellar') t.done = P.z === 2 || (W.cellarDoor && !W.cellarDoor.closed);
+    if (t.k === 'cellar') t.done = !!W.cellarOpen || (W.cellarDoor && !W.cellarDoor.closed);
     if (t.k === 'secret') t.done = M.wins > 0;
   }
 }
@@ -490,7 +490,7 @@ const GAMEAPI = {
   get MEM() { return M; }, get ITEMS() { return ITEMS; }, get CAMS() { return CAMS; }, get TRAPS() { return TRAPS; },
   throwCarried, pickUpDrop, toggleFlash, tryHide, winMatch, saveMatch, wipeMatch, storedMatch,
   bestTrapSpot, planFortify, planCamera, isValidTrapCell, addTrap, makeNoise,
-  belSeed, belSpots, belPeak, belAdd, belDiffuse, belTotal, belClear,
+  belSeed, belSpots, belPeak, belAdd, belStep, belCentroid, belTotal, belClear,
   cutoffTarget, playerGoal, pickupAt: nearestLooseItem,
   get SHOW() { return UI; }, get STAIR() { return STAIR; }, get DOORS() { return DOORS; },
   setClock(h) { if (GAME) GAME.clock = h; }, hourSet(h) { if (GAME) GAME.clock = h; },

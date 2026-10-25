@@ -81,11 +81,9 @@ function storedMatch() {
 function wipeMatch() { try { localStorage.removeItem(MATCH_KEY); } catch (e) {} }
 
 /* ------------------------------------------------------------- world setup */
-function makeWorld(seed) {
-  let w = null;
-  for (let i = 0; i < 6 && !w; i++) w = buildWorld((seed + i * 7919) >>> 0);
-  if (!w) w = buildWorld(1234567);
-  return w;
+function makeWorld() {
+  // one hand-authored map, two floors — the seed only names the match
+  return buildWorld();
 }
 
 function instantiateWorld(w) {
@@ -102,7 +100,7 @@ function instantiateWorld(w) {
   buildLights();
   buildStations();
   BEL.length = 0;
-  for (let z = 0; z < 3; z++) BEL.push(new Float32Array(MW * MH));
+  for (let z = 0; z < 2; z++) BEL.push(new Float32Array(MW * MH));
   for (const F of W.floors) for (const r of F.rooms) r.light = 0;
 }
 
@@ -411,6 +409,8 @@ function addCamera(z, x, y) {
 
 /* --------------------------------------------------------------- stations */
 const STATION_RULES = [
+  ['dtable', (r) => r.type === 'dining', 'table'],
+  ['dshelf', (r) => r.type === 'storage', 'shelf'],
   ['tv', (r) => r.type === 'living', 'tv'],
   ['couch', (r) => r.type === 'living', 'couch'],
   ['fridge', (r) => r.type === 'kitchen', 'fridge'],
@@ -451,7 +451,7 @@ function buildStations() {
   }
   // objective stations always exist
   for (const c of W.containers) add(c.id, c.z, c.x, c.y);
-  const picks = ['tv', 'couch', 'fridge', 'stove', 'sink', 'ktable', 'bed', 'wardrobe', 'desk', 'books', 'tub', 'toilet', 'basin', 'bench', 'rack', 'furn', 'cellar'];
+  const picks = ['tv', 'couch', 'fridge', 'stove', 'sink', 'ktable', 'dtable', 'bed', 'wardrobe', 'desk', 'books', 'tub', 'toilet', 'basin', 'bench', 'rack', 'furn', 'cellar', 'dshelf'];
   for (const p of picks) if (!W.stations[p]) {
     const F = W.floors[0];
     for (const r of F.rooms) { const q = nearestStandable(F.z, r.cx, r.cy, 0.28); if (q) { W.stations[p] = { x: q[0] + 0.5, y: q[1] + 0.5, z: F.z }; break; } }

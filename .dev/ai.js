@@ -46,8 +46,8 @@ const TASKS = [
   { n: 'sharpen_tools', st: 'bench', a: 16, b: 24, eff: { boredom: -3 }, hours: null },
   { n: 'organize_tools', st: 'rack', a: 14, b: 22, eff: { boredom: -2 }, hours: null },
   { n: 'pace_hall', st: 'furn', a: 10, b: 18, eff: { boredom: -2 }, hours: null },
-  { n: 'check_basement_lock', st: 'cellar', a: 8, b: 14, eff: { suspicion: -4 }, hours: null },
-  { n: 'listen_at_basement', st: 'cellar', a: 10, b: 18, eff: { suspicion: -3 }, hours: [20, 24] },
+  { n: 'check_vault_lock', st: 'cellar', a: 8, b: 14, eff: { suspicion: -4 }, hours: null },
+  { n: 'listen_at_vault', st: 'cellar', a: 10, b: 18, eff: { suspicion: -3 }, hours: [20, 24] },
   { n: 'check_front_door', st: 'front', a: 6, b: 10, eff: { suspicion: -3 }, hours: null },
   { n: 'look_out_window', st: 'tv', a: 10, b: 18, eff: { suspicion: -2 }, hours: [18, 23] },
 ];
@@ -98,15 +98,38 @@ function sightRange() {
 }
 function fovDot() { return 0.55; }
 
+function blocksSight(z, x, y) {
+  const c = T(z, x, y);
+  if (c === '#' || c === 'F' || c === 'S' || c === 'W' || c === 'X' || c === 'T') return true;
+  if (c === 'D' || c === 'L' || c === 'B') return doorClosed(z, x, y);
+  return false;
+}
+/* a grid walk that will not slip diagonally between two touching wall tiles —
+   that corner-cut was how he "saw through" walls */
 function lineOfSight(a, b) {
-  if (a.z !== b.z) return false;
-  const d = dst(a.x, a.y, b.x, b.y);
-  const n = Math.ceil(d / 0.28);
-  for (let i = 1; i < n; i++) {
-    const x = a.x + (b.x - a.x) * i / n, y = a.y + (b.y - a.y) * i / n;
-    const c = T(a.z, x | 0, y | 0);
-    if (c === '#' || c === 'F' || c === 'S' || c === 'W' || c === 'X') return false;
-    if (c === 'D' && doorClosed(a.z, x | 0, y | 0)) return false;
+  if (!a || !b || a.z !== b.z) return false;
+  let x = Math.floor(a.x), y = Math.floor(a.y);
+  const tx = Math.floor(b.x), ty = Math.floor(b.y);
+  const dx = Math.abs(tx - x), dy = Math.abs(ty - y);
+  const sx = tx > x ? 1 : -1, sy = ty > y ? 1 : -1;
+  let err = dx - dy, guard = 0;
+  while ((x !== tx || y !== ty) && guard++ < 400) {
+    const e2 = 2 * err;
+    let nx = x, ny = y;
+    if (e2 > -dy) { err -= dy; nx += sx; }
+    if (e2 < dx) { err += dx; ny += sy; }
+    if (nx !== x && ny !== y) {
+      const sideA = blocksSight(a.z, nx, y), sideB = blocksSight(a.z, x, ny);
+      if (sideA && sideB) return false;       // both corners shut: no sight line
+      if (sideA || sideB) {
+        // one corner open: only allow it if both tiles are actually open in
+        // the tighter sense (a wall tile that merely touches the corner still blocks)
+        if (blocksSight(a.z, nx, ny)) return false;
+      }
+    }
+    x = nx; y = ny;
+    if (x === tx && y === ty) break;
+    if (blocksSight(a.z, x, y)) return false;
   }
   return true;
 }
@@ -258,51 +281,198 @@ function belAdd(z, x, y, m) {
 function belAt(z, x, y) { return BEL[z] ? BEL[z][(y | 0) * MW + (x | 0)] : 0; }
 function belTotal(z) { let s = 0; const B = BEL[z]; for (let i = 0; i < B.length; i++) s += B[i]; return s; }
 function belClear() { for (const B of BEL) B.fill(0); }
+function belMass() { return (M ? 0 : 0) + belTotal(0) + belTotal(1); }
 
+/* Normalise so the whole map (both floors) adds up to 1: belief is a
+   probability, not a scoreboard — that is what makes it usable as a map
+   of "where he thinks I am" instead of a smear that only ever grows. */
+function belNormalizeMass() {
+  const t = belTotal(0) + belTotal(1);
+  if (t < 1e-7) return false;
+  const k = 1 / t;
+  for (const B of BEL) for (let i = 0; i < B.length; i++) B[i] *= k;
+  return true;
+}
+
+/* ---- the distance-to-objective field: he assumes you are heading for
+   your next job (lockpick -> red key -> blue key -> the vault). */
+let GOALFIELD = null, GOALKEY = '';
+function goalField() {
+  const goal = playerGoal();
+  if (!goal) return null;
+  const key = (goal.z | 0) + ':' + (goal.x | 0) + ',' + (goal.y | 0);
+  if (GOALFIELD && GOALKEY === key) return GOALFIELD;
+  const D = [new Float32Array(MW * MH).fill(-1), new Float32Array(MW * MH).fill(-1)];
+  const q = [];
+  const gi = (goal.x | 0) + (goal.y | 0) * MW;
+  if (walkCell(goal.z | 0, goal.x | 0, goal.y | 0)) { D[goal.z | 0][gi] = 0; q.push([goal.z | 0, goal.x | 0, goal.y | 0]); }
+  else {
+    const near = nearestStandable(goal.z | 0, goal.x | 0, goal.y | 0, 0.3);
+    if (!near) return null;
+    D[goal.z | 0][near[0] + near[1] * MW] = 0;
+    q.push([goal.z | 0, near[0], near[1]]);
+  }
+  let head = 0;
+  while (head < q.length) {
+    const [z, x, y] = q[head++];
+    const d0 = D[z][x + y * MW];
+    for (const [dx, dy] of NB4) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 1 || ny < 1 || nx >= MW - 1 || ny >= MH - 1) continue;
+      if (!walkCell(z, nx, ny)) continue;
+      const j = nx + ny * MW;
+      if (D[z][j] >= 0) continue;
+      D[z][j] = d0 + 1;
+      q.push([z, nx, ny]);
+    }
+    // stairs join the two floors
+    const st = stairFrom(z, x, y);
+    if (st) {
+      const j = st.x + st.y * MW;
+      if (D[st.z][j] < 0) { D[st.z][j] = d0 + 3; q.push([st.z, st.x, st.y]); }
+    }
+  }
+  GOALFIELD = D; GOALKEY = key;
+  return D;
+}
+function goalDist(z, x, y) {
+  const D = goalField();
+  if (!D || !D[z]) return 99;
+  const v = D[z][(y | 0) * MW + (x | 0)];
+  return v < 0 ? 99 : v;
+}
+
+/* ---- seeding: a fresh belief after he loses you (or after a sound) ---- */
 function belSeed() {
   belClear();
-  const ls = N.lastSeen || { x: P.x, y: P.y, z: P.z };
-  for (let t = 0; t <= 3.0; t += 0.35) {
-    const x = ls.x + N.pvel.x * t, y = ls.y + N.pvel.y * t;
-    belAdd(ls.z, x, y, t === 0 ? 1.6 : 0.7);
+  const ls = N.lastSeen || (P ? { x: P.x, y: P.y, z: P.z } : null);
+  if (!ls) return;
+  const walkable = [];
+  // a breadth-first bloom out from where he last had you, in walking distance
+  const seen = [0, 1].map(() => new Float32Array(MW * MH));
+  const q = [];
+  const lx = Math.max(1, Math.min(MW - 2, ls.x | 0)), ly = Math.max(1, Math.min(MH - 2, ls.y | 0));
+  if (!walkCell(ls.z, lx, ly)) {
+    const near = nearestStandable(ls.z, lx, ly, 0.3);
+    if (!near) return;
+    q.push([ls.z, near[0], near[1], 0]);
+    seen[ls.z][near[0] + near[1] * MW] = 1;
+  } else {
+    q.push([ls.z, lx, ly, 0]);
+    seen[ls.z][lx + ly * MW] = 1;
   }
-  const goal = playerGoal();
-  if (goal) {
-    const path = pathFind({ x: ls.x, y: ls.y, z: ls.z }, goal, { allowClosed: 1 });
-    let n = 0;
-    for (const p of path) { if (n++ > 14) break; belAdd(p.z, p.x, p.y, 0.45); }
-    belAdd(goal.z, goal.x, goal.y, 0.8);
-  }
-  // remembered hiding places
-  for (const h of M.hides) belAdd(h.z, h.x, h.y, 1.2);
-  // places he has recently cleared are less likely
-  for (const c of N.cleared) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) belAdd(c.z, c.x + dx, c.y + dy, -0.5);
-  belNormalize();
-}
-function belNormalize() {
-  for (let z = 0; z < 3; z++) {
-    let max = 0.0001;
-    const B = BEL[z];
-    for (let i = 0; i < B.length; i++) if (B[i] > max) max = B[i];
-    for (let i = 0; i < B.length; i++) if (B[i] < 0) B[i] = 0;
-    if (max > 1) for (let i = 0; i < B.length; i++) B[i] /= max;
-  }
-}
-function belDiffuse() {
-  for (let z = 0; z < 3; z++) {
-    const B = BEL[z], out = new Float32Array(B.length);
-    for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
-      const i = y * MW + x, v = B[i];
-      if (v < 0.004) continue;
-      const nb = [];
-      for (const [dx, dy] of NB4) if (walkCell(z, x + dx, y + dy)) nb.push(i + dy * MW + dx);
-      out[i] += v * 0.55;
-      for (const j of nb) out[j] += v * 0.45 / nb.length;
+  const MAXD = 24;
+  let head = 0;
+  while (head < q.length) {
+    const [z, x, y, d] = q[head++];
+    walkable.push([z, x, y, d]);
+    if (d >= MAXD) continue;
+    for (const [dx, dy] of NB4) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 1 || ny < 1 || nx >= MW - 1 || ny >= MH - 1) continue;
+      if (!walkCell(z, nx, ny)) continue;
+      const j = nx + ny * MW;
+      if (seen[z][j]) continue;
+      seen[z][j] = 1;
+      q.push([z, nx, ny, d + 1]);
     }
-    for (let i = 0; i < B.length; i++) B[i] = B[i] * 0.6 + out[i] * 0.9;
+    const st = stairFrom(z, x, y);
+    if (st) {
+      const j = st.x + st.y * MW;
+      if (!seen[st.z][j]) { seen[st.z][j] = 1; q.push([st.z, st.x, st.y, d + 3]); }
+    }
   }
-  belNormalize();
+  // mass: nearest cells most likely, weighted by how well they sit on the way
+  // to his objective; remembered hiding spots get a bonus; cleared rooms a cut
+  for (const [z, x, y, d] of walkable) {
+    let v = Math.exp(-d / 5.2) * (z === ls.z ? 1 : 0.3);
+    const gd = goalDist(z, x, y);
+    if (gd < 99) v *= 1 + 0.3 * Math.exp(-gd / 9);
+    v *= 1 + routeHeat(z, x, y) * 0.08;
+    v *= 1 + (M.hours[GAME.clock | 0] || 0) * 0.02;
+    if (z === ls.z && dst(x, y, ls.x, ls.y) < 1.2) v *= 2.2;
+    for (const h of M.hides) if (h.z === z && dst(x, y, h.x, h.y) < 1.4) v *= 1.9;
+    for (const c of (N.cleared || [])) if (c.z === z && dst(x, y, c.x, c.y) < 2.5) v *= 0.18;
+    BEL[z][x + y * MW] += v;
+  }
+  belNormalizeMass();
 }
+
+/* ---- one prediction step: the map flows along walkable space toward the
+   objective, and collapses onto you whenever he can actually see you. ---- */
+function belStep(dt) {
+  if (!N) return;
+  if (N.sees && P) {
+    // sighting: the map snaps to you, with a short smear where you are heading
+    belClear();
+    belAdd(P.z, P.x, P.y, 1);
+    const vx = clamp(P.vx || 0, -6, 6), vy = clamp(P.vy || 0, -6, 6);
+    for (let t = 0.4; t <= 1.6; t += 0.4) {
+      const x = P.x + (vx || Math.cos(P.a) * 3) * t * 0.35;
+      const y = P.y + (vy || Math.sin(P.a) * 3) * t * 0.35;
+      if (walkCell(P.z, x | 0, y | 0)) belAdd(P.z, x, y, 0.5 / t);
+    }
+    belNormalizeMass();
+    return;
+  }
+  const step = clamp(dt, 0, 0.5);
+  if (step <= 0) return;
+  const out = [new Float32Array(MW * MH), new Float32Array(MW * MH)];
+  for (let z = 0; z < 2; z++) {
+    const B = BEL[z];
+    for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
+      const i = x + y * MW, v = B[i];
+      if (v < 1e-6) continue;
+      const myD = goalDist(z, x, y);
+      const nb = [];
+      let tot = 0;
+      for (const [dx, dy] of NB4) {
+        const nx = x + dx, ny = y + dy;
+        if (!walkCell(z, nx, ny)) continue;
+        const nD = goalDist(z, nx, ny);
+        // downhill toward the objective is where a person walks
+        let w = nD < myD ? 1.8 : nD === myD ? 1 : 0.5;
+        w *= 1 + routeHeat(z, nx, ny) * 0.12;
+        const st = stairFrom(z, nx, ny);
+        if (st) w *= nD < myD ? 1.6 : 1.1;
+        nb.push([nx, ny, w]);
+        tot += w;
+      }
+      // mass creeps one cell every ~2 s at most: a person walking, not a gas
+      const stay = 0.55;
+      const flow = Math.min(0.42, step / 2.2);
+      out[z][i] += v * stay;
+      if (tot > 0) {
+        const k = v * (1 - stay) * flow;
+        for (const [nx, ny, w] of nb) out[z][nx + ny * MW] += k * w / tot;
+        out[z][i] += v * (1 - stay) * (1 - flow);
+      } else {
+        out[z][i] += v * (1 - stay);
+      }
+      // stair hand-off: a little mass crosses the floor
+      const st = stairFrom(z, x, y);
+      if (st) out[st.z][st.x + st.y * MW] += v * Math.min(0.12, step * 0.3);
+    }
+  }
+  for (let z = 0; z < 2; z++) {
+    const B = BEL[z];
+    for (let i = 0; i < B.length; i++) B[i] = out[z][i];
+  }
+  // he keeps a floor prior: you came in downstairs
+  for (let i = 0; i < BEL[0].length; i++) BEL[0][i] *= 1.004;
+  belNormalizeMass();
+}
+
+/* pull the map back onto a remembered point: "he was here a moment ago" */
+function belAnchor(p, w) {
+  if (!p) return;
+  w = clamp(w, 0, 0.5);
+  if (w <= 0) return;
+  for (const B of BEL) for (let i = 0; i < B.length; i++) B[i] *= (1 - w);
+  belAdd(p.z, p.x, p.y, w);
+  belNormalizeMass();
+}
+
 function belPeak(z) {
   const B = BEL[z];
   let bi = -1, bv = 0;
@@ -315,6 +485,42 @@ function belPeak(z) {
   if (bi < 0) return null;
   return { x: bi % MW + 0.5, y: (bi / MW | 0) + 0.5, z, v: bv };
 }
+
+/* if he lost you at a stairwell, the other floor is where you went */
+function stairNear(x, y, z, rad) {
+  for (const s of STAIR) {
+    const a = s.a, b = s.b;
+    const here = a.z === z ? a : b.z === z ? b : null;
+    if (!here) continue;
+    const there = here === a ? b : a;
+    if (dst(x, y, here.x + 0.5, here.y + 0.5) > (rad || 3.2)) continue;
+    return { x: there.x, y: there.y, z: there.z };
+  }
+  return null;
+}
+
+/* the single stable point he chases when he cannot see you: a weighted
+   centroid of the likeliest area, not the single hottest cell (that jitters) */
+function belCentroid(z, conf) {
+  const B = BEL[z];
+  let peak = 0;
+  for (let i = 0; i < B.length; i++) if (B[i] > peak) peak = B[i];
+  if (peak <= 0) return null;
+  const cut = peak * clamp(1 - (conf || 0.4) * 0.6, 0.15, 1);
+  let sx = 0, sy = 0, sw = 0;
+  for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
+    const v = B[x + y * MW];
+    if (v < cut) continue;
+    if (!walkCell(z, x, y)) continue;
+    sx += (x + 0.5) * v; sy += (y + 0.5) * v; sw += v;
+  }
+  if (sw <= 0) return null;
+  const cx = sx / sw, cy = sy / sw;
+  const q = nearestStandable(z, cx | 0, cy | 0, 0.3);
+  if (!q) return null;
+  return { x: q[0] + 0.5, y: q[1] + 0.5, z };
+}
+
 function belSpots(z, n) {
   const B = BEL[z], arr = [];
   for (let y = 2; y < MH - 2; y++) for (let x = 2; x < MW - 2; x++) {
@@ -322,7 +528,7 @@ function belSpots(z, n) {
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s += B[(y + dy) * MW + x + dx];
     if (s <= 0.02 || !walkCell(z, x, y)) continue;
     let pen = 1;
-    for (const c of N.cleared) if (c.z === z && dst(x, y, c.x, c.y) < 3) pen = 0.2;
+    for (const c of (N.cleared || [])) if (c.z === z && dst(x, y, c.x, c.y) < 3) pen = 0.2;
     arr.push({ x: x + 0.5, y: y + 0.5, z, s: s * pen / (1 + dst(N.x, N.y, x, y) * 0.05) });
   }
   arr.sort((a, b) => b.s - a.s);
@@ -444,7 +650,7 @@ const SCRIPTS = {
     { fn: () => { N.mode = 'routine'; pickTask(); } },
   ],
   guard_cellar: () => [
-    { go: [W.cellar.door.x + 0.5, W.cellar.door.y + 1.5, 0], label: 'guarding the basement' },
+    { go: [W.cellar.door.x + 0.5, W.cellar.door.y + 1.5, 0], label: 'guarding the vault' },
     { wait: 9, label: 'I hear you breathing', face: [W.cellar.door.x + 0.5, W.cellar.door.y + 0.5] },
     { fn: () => { N.mode = 'routine'; pickTask(); } },
   ],
@@ -484,7 +690,7 @@ const SCRIPTS = {
       const q = nearestStandable(c.z, c.x, c.y, 0.28);
       if (q) stops.push({ go: [q[0] + 0.5, q[1] + 0.5, c.z], label: 'checking the ' + c.label, c });
     }
-    stops.push({ go: [W.cellar.door.x + 0.5, W.cellar.door.y + 1.5, 0], label: 'checking the basement door' });
+    stops.push({ go: [W.cellar.door.x + 0.5, W.cellar.door.y + 1.5, 0], label: 'checking the vault door' });
     stops.push({ fn: () => { checkTheftsNear(true); N.mode = 'routine'; pickTask(); } });
     return stops;
   },
@@ -616,91 +822,219 @@ function startQuietApproach() {
 }
 function addHeatRoute() { if (P) M.route[P.z + ':' + (P.x | 0) + ',' + (P.y | 0)] = (M.route[P.z + ':' + (P.x | 0) + ',' + (P.y | 0)] || 0) + 3; }
 
+/* ------------------------------------------------------------------------
+   The chase. Three rules matter here:
+   1. while he can see you the map already sits on you (belStep collapses it);
+      the moment he loses you he chases the belief, not the memory;
+   2. one target at a time, held long enough to walk to it — switching every
+      frame is what made him twitch left and right;
+   3. every sight test goes through lineOfSight, so he never acquires you
+      through a wall or a closed door.
+   ------------------------------------------------------------------------ */
+function chaseTargetFor(d, clear) {
+  // close and clear: go straight at you
+  if (clear && d < 4.6) return { x: P.x, y: P.y, z: P.z, direct: 1 };
+  // he can see you, you are further away: cut you off — but only if that is
+  // actually shorter than just running at you
+  if (clear) {
+    const cut = cutoffTarget(d);
+    const cutD = dst(N.x, N.y, cut.x, cut.y) + Math.abs(N.z - cut.z) * 9;
+    if (cut.z === P.z && cutD < d * 1.05 && cutD < 14) return cut;
+    return { x: P.x, y: P.y, z: P.z };
+  }
+  // he lost you: the first second is your own momentum, after that the map
+  if (N.lostT < 0.9 && N.lastSeen) {
+    const ls = N.lastSeen;
+    const px = ls.x + clamp(N.pvel.x, -6, 6) * 0.5;
+    const py = ls.y + clamp(N.pvel.y, -6, 6) * 0.5;
+    if (walkCell(ls.z, px | 0, py | 0)) return { x: px, y: py, z: ls.z };
+    return { x: ls.x, y: ls.y, z: ls.z };
+  }
+  // he lost you on the stairs: assume you took them
+  if (N.lostT > 0.6 && N.lastSeen) {
+    const up = stairNear(N.lastSeen.x, N.lastSeen.y, N.lastSeen.z, 3.2);
+    if (up && up.z !== N.z) {
+      const other = belCentroid(up.z, N.conf);
+      if (other && dst(other.x, other.y, up.x + 0.5, up.y + 0.5) < 7) return other;
+      return { x: up.x + 0.5, y: up.y + 0.5, z: up.z };
+    }
+  }
+  // belief: the likeliest place you can actually be by now, on his floor
+  const c = belCentroid(N.z, N.conf);
+  if (c) return c;
+  // the other floor: only worth a climb when the heat is really up there and
+  // there is nothing left to look at on this one
+  if (N.lostT > 2.5) {
+    for (const zz of [0, 1]) {
+      if (zz === N.z) continue;
+      const mine = belTotal(N.z), theirs = belTotal(zz);
+      if (theirs > 0.5 && theirs > mine * 2.2) {
+        const b = belCentroid(zz, N.conf);
+        if (b) return b;
+      }
+    }
+  }
+  if (N.lastSeen) {
+    const q = nearestStandable(N.lastSeen.z, N.lastSeen.x | 0, N.lastSeen.y | 0, 0.3);
+    if (q) return { x: q[0] + 0.5, y: q[1] + 0.5, z: N.lastSeen.z };
+  }
+  return null;
+}
+
 function updateChase(dt) {
   N.chaseT += dt;
-  const d = N.dist;
-  const clear = lineOfSight(N, P);
-  if (N.sees) {
+  const same = N.z === P.z;
+  const d = same ? dst(N.x, N.y, P.x, P.y) : 99;
+  N.dist = d;
+  const clear = same && lineOfSight(N, P);
+
+  // the belief map is alive for the whole chase, not just after it
+  belStep(dt);
+
+  if (N.sees && clear) {
     N.lostT = 0;
+    N.conf = 1;
     N.lastSeen = { x: P.x, y: P.y, z: P.z, t: GAME.t };
     addHeatRoute();
-    if (d < 2.6 && clear) {
-      N.speed = 3.55 + Math.min(0.45, M.catches * 0.09);
-      turnTo(Math.atan2(P.y - N.y, P.x - N.x), dt, 12);
-      moveCircle(N, Math.cos(N.a) * N.speed * 1.12 * dt, Math.sin(N.a) * N.speed * 1.12 * dt, 0.29);
-      N.label = 'LUNGE!';
-    } else if (d < 7 && clear) {
-      N.speed = 3.6 + Math.min(0.45, M.catches * 0.09);
-      turnTo(Math.atan2(P.y - N.y, P.x - N.x), dt, 10);
-      moveCircle(N, Math.cos(N.a) * N.speed * dt, Math.sin(N.a) * N.speed * dt, 0.29);
-      N.label = 'get back here!';
-      N.path = [];
-    } else {
-      N.speed = 3.65 + Math.min(0.45, M.catches * 0.09);
-      N.label = 'cutting you off!';
-      N.repathT -= dt;
-      if (N.repathT <= 0 || !N.path.length) {
-        N.repathT = 0.35;
-        const tgt = cutoffTarget(d);
-        if (!goTo(tgt.x, tgt.y, tgt.z)) goTo(P.x, P.y, P.z);
-      }
-      followPath(dt, N.speed);
-    }
-    if (N.throwCd === undefined) N.throwCd = 2;
-    N.throwCd -= dt;
-    if (d > 3.2 && d < 9.5 && clear && N.throwCd <= 0) { nThrow(); N.throwCd = 3.2 - Math.min(1.2, M.catches * 0.2); }
   } else {
     N.lostT += dt;
-    N.label = 'where did you go?';
-    N.speed = 3.3;
-    if (!N.path.length || N.repathT <= 0) {
-      N.repathT = 0.5;
-      const ls = N.lastSeen || { x: N.x, y: N.y, z: N.z };
-      const t = Math.min(N.lostT + 0.5, 3);
-      const g = playerGoal() || { x: ls.x, y: ls.y, z: ls.z };
-      let p = pathFind(N, { x: ls.x + N.pvel.x * t, y: ls.y + N.pvel.y * t, z: ls.z }, { allowClosed: 1 });
-      if (p.length) N.path = p;
-      else if (g) goTo(g.x, g.y, g.z);
+    N.conf = Math.max(0.12, 1 - N.lostT / 8);
+    // while the sighting is fresh he keeps expecting you just beyond it
+    if (N.lastSeen) belAnchor(N.lastSeen, Math.max(0.1, 0.75 - N.lostT * 0.11) * dt * 3.2);
+    // ...and if that sighting was on the stairs, the map straddles both floors
+    N.stairPulse = (N.stairPulse || 0) + dt;
+    if (N.lastSeen && N.stairPulse > 0.5) {
+      N.stairPulse = 0;
+      const up = stairNear(N.lastSeen.x, N.lastSeen.y, N.lastSeen.z, 3.2);
+      if (up) { belAdd(up.z, up.x + 0.5, up.y + 0.5, 0.35); belNormalizeMass(); }
     }
-    followPath(dt, N.speed);
-    if (N.lostT > 5.5) { N.mode = 'suspicious'; startSearch('lost'); return; }
   }
+
+  // ---- direct or pathing? hysteresis so he does not flip every frame
+  const wantDirect = clear && P.z === N.z && d < (N.cmode === 'direct' ? 7.6 : 4.6);
+  N.cmode = wantDirect ? 'direct' : 'path';
+  N.speed = 3.6 + Math.min(0.45, M.catches * 0.09);
+
+  if (N.cmode === 'direct') {
+    N.path = [];
+    N.ct = null;
+    N.label = d < 2.6 ? 'LUNGE!' : 'get back here!';
+    N.speed = 3.55 + Math.min(0.45, M.catches * 0.09) + (d < 2.6 ? 0.2 : 0);
+    turnTo(Math.atan2(P.y - N.y, P.x - N.x), dt, 11);
+    const step = N.speed * dt;
+    const ox = N.x, oy = N.y;
+    moveCircle(N, Math.cos(N.a) * step, Math.sin(N.a) * step, 0.29);
+    if (dst(ox, oy, N.x, N.y) < step * 0.2) {
+      N.blockT = (N.blockT || 0) + dt;
+      if (N.blockT > 0.4) { N.blockT = 0; N.retarget = 1; N.path = []; N.cmode = 'path'; }
+    } else N.blockT = 0;
+  } else {
+    N.retargetT = (N.retargetT || 0) - dt;
+    if (N.retargetT <= 0 || N.retarget || !N.path.length) {
+      const want = chaseTargetFor(d, clear);
+      N.retargetT = 0.45;
+      if (want) {
+        const moved = !N.ct || want.z !== N.ct.z || dst(want.x, want.y, N.ct.x, N.ct.y) > 1.6;
+        // only change his mind for a materially better spot, or when the old
+        // one is gone / unreachable
+        if (moved || N.retarget || !N.path.length) {
+          const ok = goTo(want.x, want.y, want.z);
+          // hold the target even if the path failed: the straight-line fallback
+          // below keeps him moving instead of freezing on the spot
+          N.ct = { x: want.x, y: want.y, z: want.z };
+          N.retarget = 0;
+          if (!ok) N.path = [];
+        }
+      }
+    }
+    // arrived at the spot he was heading for? stop staring at it
+    if (N.ct && N.z === N.ct.z && dst(N.x, N.y, N.ct.x, N.ct.y) < 0.9) {
+      N.arriveN = (N.arriveN || 0) + 1;
+      N.ct = null; N.path = []; N.retarget = 1; N.retargetT = 0;
+    }
+    if (!N.path.length && N.ct) goTo(N.ct.x, N.ct.y, N.ct.z);
+    N.label = clear ? 'cutting you off!' : N.lostT > 0.7 ? 'where did you go?' : 'cutting you off!';
+    const before = { x: N.x, y: N.y };
+    followPath(dt, N.speed);
+    // nothing walkable to him: move straight at the target rather than freeze
+    if (!N.path.length && N.ct && Math.hypot(N.x - before.x, N.y - before.y) < 0.004) {
+      const ang = Math.atan2(N.ct.y - N.y, N.ct.x - N.x);
+      turnTo(ang, dt, 8);
+      moveCircle(N, Math.cos(ang) * N.speed * dt, Math.sin(ang) * N.speed * dt, 0.29);
+    }
+    // he reached the spot he believes in: stop chasing the memory and sweep
+    if (!N.sees && N.ct && N.lostT > 3 && N.lastSeen && N.ct.z === N.lastSeen.z &&
+        N.z === N.ct.z && dst(N.x, N.y, N.ct.x, N.ct.y) < 1.5) {
+      startSearch('trail');
+      return;
+    }
+  }
+
+  // ---- watchdog: never let him grind against the same corner
+  N.wt = (N.wt || 0) + dt;
+  if (N.wt > 0.5) {
+    const moved = dst(N.wx == null ? N.x : N.wx, N.wy == null ? N.y : N.wy, N.x, N.y);
+    if (moved < 0.3 && N.cmode !== 'direct') {
+      N.stuckN = (N.stuckN || 0) + 1;
+      N.path = []; N.retarget = 1; N.retargetT = 0;
+      if (N.stuckN >= 2) {
+        // step off the wall he is grinding on, then pick a fresh target
+        N.stuckN = 0;
+        for (const [dx, dy] of NB4) {
+          if (walkCell(N.z, (N.x + dx) | 0, (N.y + dy) | 0)) {
+            moveCircle(N, dx * 0.45, dy * 0.45, 0.28);
+            break;
+          }
+        }
+        N.ct = null;
+        const spot = belCentroid(N.z, Math.min(0.5, N.conf)) || (N.lastSeen && { x: N.lastSeen.x, y: N.lastSeen.y, z: N.lastSeen.z });
+        if (spot) goTo(spot.x, spot.y, spot.z);
+      }
+    } else N.stuckN = 0;
+    N.wx = N.x; N.wy = N.y; N.wt = 0;
+  }
+
+  // ---- throws, only with a real line of sight
+  if (N.throwCd === undefined) N.throwCd = 2;
+  N.throwCd -= dt;
+  if (d > 3.2 && d < 9.5 && clear && N.throwCd <= 0) { nThrow(); N.throwCd = 3.2 - Math.min(1.2, M.catches * 0.2); }
+
   if (N.sees && d > 9) N.label = 'cutting you off!';
-  if (d < 0.95 && N.z === P.z) catchPlayer();
+
+  // a catch only happens when he is actually on you — never through a wall
+  if (same && d < 0.95 && (clear || d < 0.45)) catchPlayer();
+
+  if (!N.sees && N.lostT > 6.5) {
+    N.mode = 'suspicious';
+    startSearch('lost');
+  }
 }
 
 function cutoffTarget(fallbackDist) {
-  const room = roomAt(P.z, P.x, P.y);
   const goal = playerGoal();
-  if (room && goal) {
-    const exits = [];
-    for (const d of W.doors) {
-      if (d.kind === 'lock' || d.kind === 'cellar') continue;
-      for (const [x, y] of d.cells) {
-        const q = nearestStandable(d.z, x, y, 0.28);
-        if (!q) continue;
-        // does this doorway lie on the way to the player's goal?
-        const score = dst(q[0], q[1], goal.x, goal.y) - dst(P.x, P.y, goal.x, goal.y) * 0.8;
-        const nd = dst(N.x, N.y, q[0], q[1]);
-        const pd = dst(P.x, P.y, q[0], q[1]);
-        if (nd < 30) exits.push({ x: q[0] + 0.5, y: q[1] + 0.5, z: d.z, score, nd, pd });
-      }
-    }
-    exits.sort((a, b) => a.score - b.score);
-    for (const e of exits) {
-      // can he beat the player there?
-      const aiT = e.nd / 3.8, pT = e.pd / 3.5;
-      if (aiT < pT * 0.92) return e;
-    }
-  }
-  // otherwise: intercept the player's path to their objective
-  if (goal) {
-    const p = pathFind(P, goal, { allowClosed: 1 });
-    if (p.length > 2) {
-      const q = p[Math.min(3, p.length - 1)];
-      return { x: q.x, y: q.y, z: q.z };
+  if (!goal) return { x: P.x, y: P.y, z: P.z };
+  // the route he believes you are taking to your objective...
+  const route = pathFind({ x: P.x, y: P.y, z: P.z }, goal, { allowClosed: 1 });
+  if (route.length < 2) return { x: P.x, y: P.y, z: P.z };
+  // ...and the first point on it he can beat you to.
+  let best = null, bestScore = 1e9;
+  for (let i = 0; i < route.length; i++) {
+    const q = route[i];
+    const floorGap = Math.abs(N.z - q.z) * 9;
+    const nd = dst(N.x, N.y, q.x + 0.5, q.y + 0.5) + floorGap;
+    if (nd > 14 || nd < 1.6) continue;        // too far, or he is already there
+    if (q.z !== P.z) continue;                // a local cut-off, not a commute
+    const pd = dst(P.x, P.y, q.x + 0.5, q.y + 0.5) + Math.abs(P.z - q.z) * 9;
+    const lead = pd - nd;
+    if (lead < 1.0) continue;                 // he cannot be there first
+    const score = lead * 3 - nd * 0.6;
+    if (score < bestScore) {
+      bestScore = score;
+      best = { x: q.x + 0.5, y: q.y + 0.5, z: q.z };
     }
   }
+  if (best) return best;
+  // nowhere better to wait: go for where you are right now
   return { x: P.x, y: P.y, z: P.z };
 }
 
@@ -861,7 +1195,7 @@ function bestTrapSpot() {
   }).sort((a, b) => b.v - a.v).slice(0, 12);
   for (const r of route) push(r.z, r.x, r.y, r.v * 0.8);
   // belief peaks
-  for (let z = 0; z < 3; z++) { const p = belPeak(z); if (p) push(z, p.x | 0, p.y | 0, 2); }
+  for (let z = 0; z < 2; z++) { const p = belPeak(z); if (p) push(z, p.x | 0, p.y | 0, 2); }
   cands.sort((a, b) => b.score - a.score);
   return cands[0] || null;
 }
@@ -954,7 +1288,7 @@ function pickTask() {
   if (M.suspicion > 62 && Math.random() < 0.45) {
     const goal = playerGoal();
     if (goal && P.keys.red && P.keys.blue) { runScript('guard_cellar', {}, 2); return; }
-    if (goal) { const q = nearestStandable(goal.z, goal.x, goal.y, 0.28); if (q) { runScript('guard_obj', { x: q[0] + 0.5, y: q[1] + 0.5, z: goal.z, what: 'the ' + (goal.z === 2 ? 'basement' : 'valuables') }, 2); return; } }
+    if (goal) { const q = nearestStandable(goal.z, goal.x, goal.y, 0.28); if (q) { runScript('guard_obj', { x: q[0] + 0.5, y: q[1] + 0.5, z: goal.z, what: 'the valuables' }, 2); return; } }
   }
   if (M.suspicion > 40 && Math.random() < 0.3) { runScript('check_valuables', {}, 1); return; }
 
@@ -1064,7 +1398,12 @@ function aiUpdate(dt) {
 
   // periodic: belief diffusion + theft noticing + camera checks
   N.bt = (N.bt || 0) + dt;
-  if (N.bt > 0.5) { N.bt = 0; if (N.mode === 'search') belDiffuse(); checkTheftsNear(); }
+  if (N.bt > 0.5) {
+    N.bt = 0;
+    if (N.mode === 'search') belStep(0.5);
+    else if (N.mode !== 'chase' && belTotal(0) + belTotal(1) > 0.001) belStep(0.12);
+    checkTheftsNear();
+  }
   updateCameras(dt);
 
   // un-stick safety net
@@ -1108,7 +1447,7 @@ function updateCameras(dt) {
 
 const AI = {
   initAI, aiUpdate, hearNoise, startChase, startSearch, startQuietApproach,
-  belAdd, belSeed, belSpots, belPeak, belDiffuse, belClear, belTotal,
+  belAdd, belSeed, belSpots, belPeak, belStep, belCentroid, belAnchor, belClear, belTotal, belAt, lineOfSight,
   pickTask, runScript, updateChase, cutoffTarget, playerGoal,
   bestTrapSpot, planFortify, planCamera, isValidTrapCell, addTrap,
   checkTheftsNear, considerRelock, applyRelock, applyBoard, planBoardWindow, visibleSpot,
