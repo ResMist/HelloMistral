@@ -1,247 +1,194 @@
 # Hello Neighbour 2D 🔦
 
-A single-file browser stealth game. Break into **one fixed house**, out-think a
-neighbour who **learns how you play**, and take what is locked in his vault.
+A single-file browser stealth game. One hand-built house, two floors, and a
+neighbour who **learns how you play**.
 
-The house is hand-built — same walls, same doors, same shed, same stairs every
-match. The only thing that changes between matches is what he remembers.
+Everything is in **[`index.html`](index.html)** — no build step, no dependencies,
+no external assets, no network. Open the file and press **PLAY**.
 
-Everything lives in **[`index.html`](index.html)** — no build step, no
-dependencies, no external assets, no network. Open the file, press **Play**.
+## Screenshots
 
-![The menu](docs/menu.png)
-
-## What is in this build
-
-| System | What it actually does |
+| Ground floor | Upstairs |
 | --- | --- |
-| **One hand-built house** | The original ground floor, tile for tile, plus a second floor. No generator, no seeds, no retry-until-valid — the map in `index.html` is the map you play. |
-| **Two floors** | Ground floor and upstairs, joined by a two-tile staircase in the foyer. He uses the stairs too, and losing him on the landing is how you get away. |
-| **Flat, plain art** | Solid-colour tiles, coloured boxes for furniture, circles for people. No shading, no rugs, no light pools — the look from the first build. |
-| **Keyring, not pockets** | The lockpick, the red key and the blue key live on a HUD keyring. They are never items, never in the bag, never throwable. |
-| **Day / night** | The clock runs 42 real seconds per in-game hour. At night his sight drops 20% and the house goes blue. Crouching at night is nearly invisible; sprinting is not. |
-| **A neighbour who learns** | Footstep triangulation, a real belief map he chases on, chokepoint ambushes, local cut-offs, tomato forensics, theft detection, re-locking, boarding, traps, cameras. Details below. |
-| **Match-scoped memory** | Everything he learns belongs to one match. Continue keeps it, New Game wipes it. |
+| ![foyer and staircase](docs/ground.png) | ![upstairs office](docs/upstairs.png) |
 
-![Night raid](docs/gameplay.png)
-
-*Night. Crouched in the dining room while he cooks next door. The cone is his
-actual field of view — cut by the walls, not decoration.*
+![night](docs/night.png)
 
 ## How to play
 
 | Input | Action |
 | --- | --- |
 | **WASD / arrows** | Move |
-| **Shift** | Sprint — fast, loud, and visible |
-| **C** | Crouch — slow, silent, hard to see |
-| **E** | Use: search, open, pick locks, take the stairs, climb windows, take the SECRET |
-| **G** | Grab / set down a loose object |
-| **Q** / **F** / **left-click** | Throw ahead / throw at the cursor |
-| **H** | Hide (dark corners only) |
-| **T** | Torch — light, but he sees you further |
-| **M** | His belief map |
-| **Wheel** | Zoom |
-| **Esc / P** | Pause, with the panel of everything he knows |
+| **Shift** | Sprint — fast, loud |
+| **C** | Crouch — slow, quiet, harder to see |
+| **E** | Use: search a container, pick a lock, take the stairs, hide in a wardrobe |
+| **Click / F** | Throw the held object |
+| **Q** | Drop the held object |
+| **1–4** | Inventory slot |
+| **H** | His belief map |
+| **P** | His path |
+| **Esc** | Pause |
 
-**The route.** Get the **lockpick** from the shed → inside the house → pick the
-**study** door → take the **blue key** from the desk → take the **red key** from
-the kitchen fridge → unlock the **vault** in the workshop → take the SECRET.
-The stairs in the foyer lead to the landing, two bedrooms, a bathroom and a
-storage room — a way across the house that misses the rooms he watches.
+**The route.** Take the **lockpick** from the shed → get inside the house → pick
+the lock on the **upstairs office** and take the **blue key** from the desk →
+take the **red key** from the kitchen fridge → unlock the basement door in the
+workshop → take the SECRET.
 
-The front door, the windows and the vault door are all real routes. Breaking a
-window is loud; he will notice and board it up on a later attempt.
+The front door, the windows and the upstairs route are all real ways in.
+Breaking a window is loud, he will notice, and on a later attempt he will board
+it and set a trap on the floor you landed on.
 
 ## The house
 
-![Upstairs](docs/upstairs.png)
+One fixed map, 56×40 tiles per floor, the same every match.
 
-*Upstairs: master bedroom, spare room, landing, storage and the upstairs bath.*
+- **Ground floor:** porch and path, living room, kitchen, dining room, foyer,
+  bedroom, study (locked), bathroom, workshop, the vault behind its locked
+  basement door, and the shed in the west yard.
+- **Upstairs:** landing (stairs), upstairs hall, nursery, master bedroom, guest
+  bedroom, upstairs bath and the **home office** where the blue key lives.
 
-The ground floor is unchanged from the first build: porch and path, living room,
-kitchen, dining room, foyer, bedroom, study (locked), bathroom, workshop, the
-vault behind its red door, and the shed in the west yard. The only addition is
-the staircase in the foyer (tiles `U`/`N`) and the upstairs it leads to:
+The two floors share the stairwell footprint in the foyer, so a stair tile simply
+swaps the floor under you. No procedural generation, no variants.
 
-| Room | What it is for |
-| --- | --- |
-| **Landing** | The crossing. Reachable from the stairs, opens onto every upstairs room and back down. |
-| **Master bedroom** | His bed. He sleeps here early in the night, and wakes if you are loud. |
-| **Spare room** | The other bed; the hide spot when he is hunting downstairs. |
-| **Storage** | Shelves and crates — a second place for search steps to end. |
-| **Upstairs bath** | The far corner. A long way from the stairs, which is the point. |
+## Keys are a keyring
 
-The map is fixed and validated at boot: every room reachable from the gate, the
-SECRET only behind the vault door, the study only behind the lock, no container
-buried in furniture, no window with a wall behind it, and the stairs matching on
-both floors.
+The lockpick, the red key and the blue key live on the **keyring** in the HUD.
+They are never inventory items, never in a slot, never dropped and never thrown.
+The four slots of the bag are for tomatoes and other throwables.
+
+## Night
+
+The clock runs 6 in-game minutes per real second (a full day in four minutes), starting at 18:00. From
+**21:00 to 06:00** the house is dark: the screen goes blue, and his sight range
+drops to about half. He goes to bed at night, and a sleeping man only wakes for
+something genuinely loud. That is your window — but the floorboards still creak.
 
 ## The neighbour
 
-He is a small, honest simulation rather than a scripted chase.
+He is a small simulation, not a scripted chase.
 
-### What he perceives
+### Perception
 
-- **A real view cone** with occlusion: walls, closed doors and furniture block
-  sight. The line-walk is corner-safe, so he cannot peek between two touching
-  wall corners — the cone you see on screen is the cone he uses.
-- **Stale sightings.** Alertness rises while he looks at you and decays when he
-  does not; a glimpse in the dark does not instantly become a chase.
-- **Hearing through geometry.** Noise radius is attenuated per wall crossed and
-  almost mute between floors. Footsteps are quiet when crouched, loud when
-  sprinting.
-- **A rolling six-second noise buffer.** Three or more noises inside six seconds
-  give him a direction *and* a speed, so he walks to the **predicted** position
-  instead of the last one. "Following the sound…"
-- **Night realism.** Sight range ×0.8 at night, ×1.5 with your torch on, ×1.15
-  when you sprint, ×0.55 when you crouch, and a lit room helps him spot you.
-- **Cameras**, once he has caught you twice, sweep a cone and radio him.
+- **A real view cone** with occlusion: walls, closed doors and furniture stop
+  sight. Sight never crosses a floor.
+- **Corner-safe line of sight** — he cannot see you round a wall corner.
+- **Hearing** through geometry: noise is attenuated per wall crossed and is
+  almost mute between floors. Crouching is quiet, sprinting is not.
+- **Night** halves his range. He goes to bed, and a sleeping man only wakes for
+  something loud.
 
-### The belief map — and how the chase uses it
+### The belief map
 
-The belief map is a **normalised probability** over both floors: every cell is
-`P(you are here)`, the two floors together add up to 1. It is not a heat trail
-that only grows.
+A normalised probability over **both floors** (`bel`, two layers of 56×40). It is
+seeded from the last sighting plus the player's velocity, the objective, the rooms
+and windows you have used, your route heat and the hiding places he has caught you
+in before. It diffuses along walkable tiles, loses mass where he has just looked,
+and leaks through the stairwell in both directions.
 
-- **Sighted** → the map collapses onto you, plus a short smear where you are
-  heading (your velocity).
-- **Lost** → it is anchored back onto the last sighting, and flows along
-  walkable tiles toward **your objective** (`lockpick → red key → blue key →
-  vault`), so it predicts the way you are going, not the way you came.
-- **Rooms he has cleared** lose 80% of their mass. **Places he has caught you**
-  gain ~90%. **The stairs** join the floors: mass crosses both ways.
-- **The chase reads it every frame.** While he can see you the map sits on you.
-  The moment he loses you, his target is the **weighted centroid of the
-  likeliest area** he can actually reach — not the single hottest cell. If he
-  lost you at the stairwell, he assumes you took the stairs and climbs.
-
-Press **M** in game to see it.
-
-![His belief](docs/belief.png)
-
-*Press **M**: the red wash is his belief about where you are. The hot core is
-where he last had you; the rest is where you are likely to be going.*
+It drives the chase directly: while he can see you his target is you; the moment
+sight or line of sight breaks, his target becomes the belief map's best reachable
+spot — never your true position. Press **H** to watch it.
 
 ### The chase
 
-- **One target, held.** He re-picks a chase target at most every 0.45 s, and
-  only when the new spot is more than 1.6 tiles from the old one. That is what
-  stops the twitch-left-twitch-right that made him look confused.
-- **Direct or pathing, with hysteresis.** Close and clear, he runs straight at
-  you; past 7.6 tiles he drops back to pathing. He cannot flip between the two
-  every frame.
-- **Local cut-offs only.** If he can see you and a point on your route to the
-  objective is genuinely shorter for him, he takes it — same floor, within 14
-  tiles. Otherwise he comes straight at you.
-- **No freezing.** If a path fails, he walks straight at the target; if he has
-  not moved for half a second he drops the path, steps off the wall and picks a
-  fresh spot. He never grinds in place.
-- **No idea he has not earned.** A catch needs a real line of sight — he cannot
-  grab you through a wall — and every acquisition goes through the same
-  occlusion test.
+- **One target, held.** He re-picks a chase target at most every 0.28 s, and only
+  when the new spot is more than 1.6 tiles from the old one.
+- **Direct or pathing, with hysteresis.** Close and clear he runs straight at you;
+  past 7.6 tiles he drops back to pathing. He cannot flip between the two every
+  frame, and only one steering routine sets his heading per frame.
+- **Cut-offs.** While he can see you, he will look along your route to the thing
+  you are after and take a point that is nearer to him than to you. Same floor
+  only.
+- **Stairs.** He uses the same staircase you do, and steps off it after a swap so
+  he cannot ping-pong between floors.
+- **No wallhacks.** Sight, acquisition and the catch all go through the same
+  occlusion test. He cannot grab you through a wall, and a hidden player is never
+  caught by proximity — he has to open the wardrobe.
+- **No freezing.** Blocked movement drops the path and re-plans; repeated failure
+  unsticks him.
 
-### What he does about it
+### What he learns
 
-- **Quiet approach.** A sighting further than 7.5 tiles becomes a slow,
-  close-the-distance approach; the chase only starts when he is sure.
-- **Belief-map search.** When the chase ends, the map is re-seeded around the
-  last sighting with your likely objective, the places you have hidden before,
-  minus the places he has just cleared. He sweeps the peaks.
-- **Chokepoint ambushes.** Every third search step he camps the nearest doorway
-  and faces the approach instead of wandering.
-- **Tomato forensics.** A thrown object that hits him records its origin; he
-  wipes his face and hunts from where it came.
-- **Traps**, placed only on walkable floor that is not a doorway, a stair, a
-  window, furniture, a container's approach, his own tile or your feet.
-- **House-keeping.** He re-locks doors you picked, boards windows you broke and
-  puts moved objects back where they belong.
+Everything lives in `localStorage` under `hm2d.v1` and is per campaign:
 
-### What he remembers
+- **Windows you climb through** — boarded up, and after two entries a trap is
+  planned on a legal cell near the window.
+- **Thefts** — search a container and he may notice it was searched; that raises
+  suspicion and gets the room watched.
+- **Your hours** — a histogram of when he has actually spotted you.
+- **Your rooms and routes** — per-floor 4×4 route heat, used for patrol choices
+  and belief priors.
+- **Hiding places** — when he catches you in one it goes on his list, and the next
+  search starts there.
+- **Catches** — after two, a camera; after three, a new front-door lock.
 
-All of it is per match and visible in the pause panel:
+### Traps and cameras go on legal ground
 
-- **Suspicion** — a slow meter fed by noises, broken glass, sightings and thefts,
-  decaying over time, driving how often he patrols, guards the vault and checks
-  his valuables.
-- **Your hours** — a histogram of when he has actually spotted you. Those hours
-  get patrols and a guard on the vault door.
-- **Your routes** — how often you walk each tile; that is where traps go.
-- **Your entries** — doors and windows you use; after two catches that is where
-  the camera goes.
-- **Thefts** — he only notices an emptied container or a missing ornament when he
-  can actually see it. "Someone has been in my fridge!" costs you suspicion and
-  gets the container watched.
-- **Hiding places** — where he has caught you seeds the next search.
-- **The lighter sleeper** — after the first catch, less noise wakes him.
+A trap is only set on open floor with body clearance, at least three ways past,
+away from doors, stairs, windows, hiding places, other traps and your spawn, on a
+floor he can actually reach. Invalid plans are dropped, and the script retries
+nearby before giving up. Cameras go on reachable indoor floor against a wall, out
+of the way of doorways.
 
-**Caught?** The match restarts in the same house with everything he learned
-intact. **New Game** erases all of it, including traps, cameras and boarded
-windows.
+## Match flow
 
-![The vault](docs/vault.png)
+**Menu → PLAY → a three-slide cutscene → the match.** Skip is always available.
 
-*The vault, open: the only reason to be here.*
+- **Caught** shows what he learned, then **TRY AGAIN** restarts the same house
+  with his memory intact.
+- **NEW GAME — HE FORGETS** wipes the save and his memory completely.
+- Every round rebuilds the world from the immutable base map: containers are
+  restocked, doors re-locked, windows repaired, the vault resealed. Nothing from
+  the last attempt leaks into the new one — only what he remembers.
 
 ## Tests
 
 ```bash
-node test/game2d.js              # 219 checks
+node test/game.js                # 118 checks
 node legacy-3d/test/smoke.js     # 25 checks
 ```
 
-The suite boots the real `index.html` in a stub DOM/canvas and drives it with
-simulated key presses. It covers the fixed map (tile positions, room list, both
-floors, identical for every seed), reachability with and without keys, the study
-lock, the vault and the win, the stair hand-off both ways, night senses, wall and
-door occlusion, the belief map's normalisation and flow, the chase (acquisition,
-no flapping, no stalling, following you upstairs), catches needing line of sight,
-trap validity, camera gating, theft detection and re-locking, match-scoped memory
-(Continue keeps it, New Game wipes it), and every screen rendering.
-
-The archived Three.js build is in [`legacy-3d/`](legacy-3d/) with its own
-25-check suite.
+`test/game.js` boots the real `index.html` in a dependency-free DOM/canvas stub
+(`test/harness.js`) and drives it headlessly. It covers the two floors and the
+stairwell, the keyring (never in the inventory), lock and vault gating, trap
+validity and the plans generated from window use, night and sleep, the cutscene
+and menu flow, catching, memory persistence across a reload, New Game wiping it,
+world state not leaking between rounds, hiding and remembered hideouts, sight
+occlusion (walls and floors), belief-driven chasing, chase cut-offs, heading
+stability, no stalling, cross-floor pursuit, no catches through walls, and the
+whole route being walkable.
 
 ## Repository layout
 
 ```
-index.html            the entire game: map, AI, renderer, HUD
-docs/                 screenshots used by this README
-test/game2d.js        219-check headless regression suite
+index.html            the entire game: map, AI, renderer, HUD, screens
+test/game.js          118-check headless regression suite
 test/harness.js       dependency-free DOM/canvas stub + seeded RNG
-legacy-3d/            archived Three.js build
-.dev/                 readable sources + the assembler
+docs/                 screenshots
+legacy-3d/            archived Three.js build (own 25-check suite)
 README.md             this file
 LICENSE               MIT
 ```
 
-`index.html` is assembled from `.dev/*.js` by `node .dev/build.js`:
-
-```
-.d/ mapfixed.js   the fixed two-floor map + its validator
-   core.js        state, match memory, A*, doors, noise, traps, cameras
-   ai.js          perception, belief map, chase, scripts, learning
-   game.js        match flow, input, interactions, win/lose
-   views.js       the flat renderer, HUD and screens
-```
-
-The shipped file is self-contained; the split exists only to keep the source
-reviewable. The generated `index.html` **is** the deliverable and is committed.
+Run `node test/game.js` and `node legacy-3d/test/smoke.js`. There is no
+`package.json`, no install step and no network access.
 
 ## Design notes
 
-- **World:** 56×40 tiles, two floors, `w.floors[z].G[y][x]`.
-- **Navigation:** A* with no corner cutting, floor-aware hand-off through stair
-  tiles, door opening as part of the path, wall attenuation for sound.
-- **AI:** perception → belief → utility scripts (`routine`, `suspicious`,
-  `search`, `chase`, `ambush`, `fortify`), all driven by the match memory.
-- **Inspiration:** the *Hello Neighbor* alpha AI (designed around the house,
-  cut-off predictions) and the published interviews about an AI that reasons
-  from sound, notices changed objects and sets traps on the routes you used.
-  This build keeps sight honest (no wallhacks), adds a second floor, and makes
-  the learning deterministic and per-match rather than a black box.
+- 56×40 tiles, two floors; `FG[z][y][x]` lives, `BASE[z]` is immutable.
+- A* (8-way, octile, no corner cutting, clearance costs) plus string pulling,
+  always on a named floor.
+- Belief is `Float32Array(2 × 56 × 40)`; diffusion runs on both floors with a
+  stairwell transfer.
+- Perception, pathing, traps, cameras and items all carry a floor; nothing
+  implicit.
+- Inspiration: the *Hello Neighbor* alpha AI (built around the house, cut-off
+  predictions, traps on routes you used). This build keeps sight honest (no
+  wallhacks), adds a second floor, and keeps the learning deterministic and
+  inspectable instead of scripted.
 
-A fan-made stealth-game homage built from scratch. Not affiliated with, endorsed
+A fan-made stealth-game homage, built from scratch. Not affiliated with, endorsed
 by, or using assets from any commercial game.
 
 ## License
