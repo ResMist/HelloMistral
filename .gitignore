@@ -1,0 +1,14 @@
+# local scratch space (screenshots, probes, ad-hoc harnesses)
+.work/
+
+# editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# none of the game needs these, but keep them out if tooling creates them
+node_modules/
+package-lock.json
+*.log

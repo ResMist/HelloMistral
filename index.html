@@ -1,136 +1,2212 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HelloMistral — a stealth horror tribute</title>
+<!DOCTYPE html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>HelloMistral 2D</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e16;
-    font-family: 'Segoe UI', system-ui, sans-serif; color: #e8e4d8; }
-  #app, #app canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .hud { position: absolute; z-index: 10; pointer-events: none; user-select: none; }
+:root{--bg:#7fc66a;--fg:#1b2a41;box-sizing:border-box}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#2c4a35}}
+:root[data-theme=dark]{--bg:#2c4a35}
+html,body{height:100%;margin:0;overflow:hidden;background:#16202b;font:13px system-ui,sans-serif;color:#fff}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+.p{position:fixed;background:#000b;border-radius:10px;padding:8px 12px;line-height:1.5;pointer-events:none;z-index:3}
+#hud{left:10px;top:calc(10px + env(safe-area-inset-top,0px));max-width:320px}
+#dbg{right:10px;top:calc(10px + env(safe-area-inset-top,0px));min-width:230px;font-size:12px}
+#keys{left:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));font-size:12px}
+#inv{right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));font-size:12px}
+#msg{left:50%;bottom:calc(64px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);max-width:min(680px,80vw);text-align:center}
+.slot{display:inline-block;min-width:54px;text-align:center;border:1px solid #ffffff44;border-radius:6px;padding:2px 6px;margin-left:4px;background:#0006}
+.slot.sel{border-color:#ffd23f;color:#ffe27a}
+#keys{left:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));font-size:12px}
+#hud,#dbg,#keys{white-space:pre-line}
+#msg{left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));font:700 18px system-ui;text-align:center}
+#inv{left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;padding:6px 8px}
+.slot{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:58px;height:30px;border:2px solid #ffffff55;border-radius:6px;background:#0008;font-size:11px}
+.slot b{opacity:.55;font-size:10px}
+.slot.sel{border-color:#ffd23f;background:#000c;color:#ffd23f}
+.bar{display:inline-block;height:6px;background:#e8c04a;border-radius:3px;vertical-align:middle}
+.key{display:inline-block;border-radius:5px;padding:1px 6px;margin-right:4px;border:1px solid #ffffff44;background:#0006}
+.key.got{border-color:#ffd23f;background:#ffd23f33;color:#ffe27a}
+#ov{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(#7fd0ffdd,#bff0a0ee);color:#1b2a41;text-align:center;padding:20px;overflow:auto}
+#ov h1{font-size:clamp(34px,7vw,66px);margin:0;color:#ff7a1a;text-shadow:3px 3px 0 #1b2a41}
+#ov button{font:700 20px system-ui;padding:12px 32px;border:4px solid #1b2a41;border-radius:14px;background:#ffd23f;cursor:pointer;color:#1b2a41}
+#ov button:hover{background:#ff7a1a}
+#ov button.ghost{font:600 12px system-ui;padding:6px 14px;border-width:2px;background:transparent;color:#1b2a41;letter-spacing:.5px}
+#ov button.ghost:hover{background:#1b2a41;color:#ffd23f}
+#ov small{max-width:680px;line-height:1.6}
+#ov .card{background:#ffffffb0;border:3px solid #1b2a41;border-radius:14px;padding:16px 20px;max-width:640px;text-align:left;line-height:1.65;font-size:14px}
+#ovb{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+</style></head><body>
+<canvas id=c></canvas><div id=hud class=p></div><div id=dbg class=p></div><div id=keys class=p></div><div id=inv class=p></div><div id=msg class=p style="display:none"></div>
+<div id=ov><h1>HELLO MISTRAL 2D</h1><div id=ovt></div><div id=ovb></div></div>
+<script>
+'use strict';
+/* =====================================================================
+   HELLO MISTRAL 2D — one house, two floors, one neighbour who learns.
 
-  #crosshair { top: 50%; left: 50%; transform: translate(-50%,-50%);
-    width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.75); }
-  #prompt { top: 58%; left: 50%; transform: translateX(-50%); font-size: 15px;
-    background: rgba(8,10,16,.72); padding: 6px 14px; border-radius: 6px; letter-spacing: .3px; }
-  #holdwrap { top: 63%; left: 50%; transform: translateX(-50%); width: 160px; height: 6px;
-    background: rgba(255,255,255,.15); border-radius: 3px; overflow: hidden; }
-  #holdbar { height: 100%; width: 0%; background: #e8c04a; }
-  #msg { bottom: 13%; left: 50%; transform: translateX(-50%); font-size: 16px; font-style: italic;
-    text-shadow: 0 2px 6px #000; transition: opacity .3s; white-space: nowrap; }
-  #inv { bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
-  #inv .slot { width: 46px; height: 46px; border: 2px solid rgba(255,255,255,.28); border-radius: 8px;
-    display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
-    background: rgba(8,10,16,.55); color: #e8c04a; }
-  #inv .slot.filled { border-color: #e8c04a; }
-  #tools { bottom: 24px; left: 24px; display: flex; gap: 6px; }
-  #keys { bottom: 78px; left: 24px; display: flex; flex-direction: column; gap: 6px; }
-  .chip { font-size: 10px; font-weight: 700; letter-spacing: 1px; padding: 4px 8px; border-radius: 4px;
-    background: rgba(8,10,16,.6); border: 1px solid rgba(255,255,255,.25); }
-  .key-red { color: #ff7a7a; border-color: #d93a3a; }
-  .key-blue { color: #7aa8ff; border-color: #3a6fd9; }
-  .key-green { color: #7ae096; border-color: #3fae4a; }
-  #obj { top: 24px; left: 24px; font-size: 13px; line-height: 1.7; text-shadow: 0 2px 4px #000;
-    background: rgba(8,10,16,.45); padding: 10px 14px; border-radius: 8px; max-width: 320px; }
-  #obj div::before { content: '▸ '; color: #e8c04a; }
-  #attempt { top: 24px; right: 24px; font-size: 12px; opacity: .75; text-shadow: 0 2px 4px #000; }
-  #alert { top: 12%; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: 800;
-    letter-spacing: 2px; text-shadow: 0 2px 8px #000; }
-  #alert.chase { color: #ff5252; animation: pulse .5s infinite alternate; }
-  #alert.suspect { color: #e8c04a; }
-  @keyframes pulse { from { opacity: .65; } to { opacity: 1; } }
-  #room { bottom: 24px; right: 24px; font-size: 12px; opacity: .6; text-shadow: 0 2px 4px #000; }
-  #vignette { inset: 0; box-shadow: inset 0 0 130px 30px rgba(0,0,0,.6); transition: box-shadow .4s; }
-  #vignette.chase { box-shadow: inset 0 0 130px 30px rgba(0,0,0,.6), inset 0 0 140px 40px rgba(255,20,20,.35); }
+   The ground floor is the original house, tile for tile. A staircase in
+   the foyer leads to a second floor: landing, hall, two bedrooms, a
+   nursery and a home office where the blue key lives.
 
-  .screen { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 18px; text-align: center;
-    background: radial-gradient(ellipse at center, rgba(12,16,26,.88), rgba(4,6,10,.97)); }
-  .screen h1 { font-size: 56px; letter-spacing: 4px; color: #e8c04a; text-shadow: 0 4px 24px rgba(0,0,0,.8); }
-  .screen h1 span { color: #ff5252; }
-  .screen h2 { font-size: 26px; font-weight: 300; letter-spacing: 6px; color: #ff5252; }
-  .screen p, .screen .notes { font-size: 15px; line-height: 1.8; opacity: .9; max-width: 640px; }
-  .screen .notes div { color: #e8c04a; }
-  .controls { display: grid; grid-template-columns: auto auto; gap: 4px 18px; font-size: 13px;
-    opacity: .85; margin: 6px 0; text-align: left; }
-  .controls b { color: #e8c04a; font-weight: 600; }
-  .screen button { font: inherit; font-size: 16px; padding: 12px 34px; border-radius: 8px;
-    border: 2px solid #e8c04a; background: rgba(232,192,74,.12); color: #e8c04a; cursor: pointer;
-    letter-spacing: 2px; transition: all .2s; }
-  .screen button:hover { background: #e8c04a; color: #10131c; }
-  .screen button.ghost { border-color: rgba(255,255,255,.3); color: #ccc; font-size: 13px; padding: 8px 18px; }
-  .hidden { display: none !important; }
-  .disclaimer { position: absolute; bottom: 16px; font-size: 11px; opacity: .45; max-width: 80%; }
-</style>
-</head>
-<body>
-<div id="app"></div>
+   He has a life, a routine, a keyring of his own on your hip, and a
+   memory. He remembers the windows you climb through, the rooms you use,
+   the hour you come, the spots you hide in — and he acts on it.
+   ===================================================================== */
+const W=56,H=40,PI=Math.PI,NF=2;
+const $=i=>document.getElementById(i);
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const cl=(v,a,b)=>v<a?a:v>b?b:v;
+const dist=(a,b,c,d)=>Math.hypot(a-c,b-d);
+const cellKey=(z,x,y)=>z+':'+(x|0)+','+(y|0);
+const parseCell=k=>{
+ const s=String(k).split(':');
+ if(s.length===2){const a=s[1].split(',').map(Number);return[+s[0]||0,a[0]|0,a[1]|0]}
+ const a=s[0].split(',').map(Number);return[0,a[0]|0,a[1]|0];
+};
+const isNightNow=()=>hour>=21||hour<6;
 
-<div id="vignette" class="hud"></div>
-<div id="crosshair" class="hud"></div>
-<div id="prompt" class="hud hidden"></div>
-<div id="holdwrap" class="hud hidden"><div id="holdbar"></div></div>
-<div id="msg" class="hud"></div>
-<div id="obj" class="hud"></div>
-<div id="attempt" class="hud"></div>
-<div id="alert" class="hud"></div>
-<div id="inv" class="hud">
-  <div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
-</div>
-<div id="keys" class="hud"></div>
-<div id="tools" class="hud"></div>
-<div id="room" class="hud"></div>
+/* ---------------------------------------------------------------- map
+   Two hand-authored floors. `BASE[z]` is immutable; `FG[z]` is the live
+   copy that a new round rebuilds, so nothing leaks between attempts. */
+function blankMap(){
+ const g=[];
+ for(let y=0;y<H;y++){g[y]=[];for(let x=0;x<W;x++)g[y][x]=x===0||y===0||x===W-1||y===H-1?'F':','}
+ return g;
+}
+const rect=(g)=>(a,b,c,d,h)=>{for(let y=b;y<=d;y++)for(let x=a;x<=c;x++)g[y][x]=h};
 
-<div id="screen-menu" class="screen">
-  <h1>Hello<span>Mistral</span></h1>
-  <p>Your neighbor is hiding something in his basement. Break in. Don't get caught.</p>
-  <div class="controls">
-    <b>WASD</b><span>move</span>
-    <b>Mouse</b><span>look</span>
-    <b>Shift</b><span>sprint (loud)</span>
-    <b>C</b><span>crouch (quiet)</span>
-    <b>Space</b><span>jump</span>
-    <b>E</b><span>interact / hold for locks &amp; boards</span>
-    <b>LMB</b><span>throw held object (distraction)</span>
-    <b>Q</b><span>drop</span>
-    <b>M</b><span>mute</span>
-    <b>F</b><span>flashlight</span>
-    <b>Esc</b><span>pause</span>
-  </div>
-  <button id="btn-play">ENTER THE YARD</button>
-  <button id="btn-reset" class="ghost">Make him forget everything</button>
-  <p style="font-size:12px;opacity:.6">He learns which windows you use. He sets traps. He gets faster.<br>
-  His memory persists between sessions — until you wipe it.</p>
-  <div class="disclaimer">An original fan-made stealth game inspired by the “sneak into the
-  neighbor's house” genre. Not affiliated with, endorsed by, or using any assets from any
-  commercial game. Everything here is procedurally generated code and geometry.</div>
-</div>
+function groundMap(){
+ const g=blankMap(),R=rect(g);
+ R(12,7,43,30,'#');R(13,8,42,29,'.');R(23,7,23,30,'#');R(34,7,34,30,'#');
+ R(13,17,22,17,'#');R(24,14,33,14,'#');R(24,21,33,21,'#');R(35,17,42,17,'#');R(35,23,42,23,'#');
+ R(43,24,49,29,'#');R(44,25,48,28,'.');R(2,8,7,13,'#');R(3,9,6,12,'.');
+ [[23,12,'D'],[17,17,'D'],[23,25,'D'],[28,14,'D'],[28,21,'D'],[34,19,'D'],[34,26,'D'],[34,11,'L'],[28,30,'D'],[26,7,'D'],[43,27,'B'],[7,11,'D'],
+  [12,12,'W'],[17,7,'W'],[12,24,'W'],[17,30,'W'],[30,7,'W'],[38,30,'W'],[43,20,'W'],[43,12,'W'],[38,7,'W'],[4,8,'W'],[28,39,','],
+  [31,27,'U'],[32,27,'U'],[31,28,'U'],[32,28,'U']].forEach(a=>g[a[1]][a[0]]=a[2]);
+ for(const f of FURN[0])if(f[5])R(f[1],f[2],f[1]+f[3]-1,f[2]+f[4]-1,f[5]);
+ for(const p of PLOTS)g[p.y][p.x]='T';
+ return g;
+}
 
-<div id="screen-pause" class="screen hidden">
-  <h2>PAUSED</h2>
-  <p>He is still in there. Waiting.</p>
-  <button id="btn-resume">RESUME</button>
-</div>
+function upstairsMap(){
+ const g=blankMap(),R=rect(g);
+ R(12,7,43,30,'#');R(13,8,42,29,'.');
+ R(23,8,23,29,'#');R(34,8,34,29,'#');
+ R(13,17,22,17,'#');R(35,17,42,17,'#');R(24,14,33,14,'#');R(24,21,33,21,'#');
+ [[23,16,'D'],[23,27,'D'],[34,10,'L'],[34,27,'D'],[28,14,'D'],[28,21,'D'],
+  [17,7,'W'],[30,7,'W'],[38,7,'W'],[17,30,'W'],[30,30,'W'],[38,30,'W'],[43,12,'W'],[43,26,'W'],[12,12,'W'],
+  [31,27,'V'],[32,27,'V'],[31,28,'V'],[32,28,'V']].forEach(a=>g[a[1]][a[0]]=a[2]);
+ for(const f of FURN[1])if(f[5])R(f[1],f[2],f[1]+f[3]-1,f[2]+f[4]-1,f[5]);
+ return g;
+}
 
-<div id="screen-caught" class="screen hidden">
-  <h1><span>CAUGHT</span></h1>
-  <p id="caught-sub"></p>
-  <div class="notes" id="caught-notes"></div>
-  <button id="btn-retry">TRY AGAIN</button>
-</div>
+const PLOTS=[[4,34],[6,34],[8,34],[4,36],[6,36],[8,36]].map(a=>({x:a[0],y:a[1],n:3}));
+/* furniture: name, x, y, w, h, tile ('S' solid / 'T' low / 0 walkable) */
+const FURN=[
+ [['couch',14,12,4,1,0],['tv',15,8,3,1,'T'],['table',15,10,2,1,'T'],['shelf',20,8,3,1,'S'],['sink',24,8,2,1,'T'],['stove',27,8,2,1,'T'],['counter',29,8,3,1,'T'],['fridge',32,8,1,1,'S'],['table',27,11,3,1,'T'],['table',27,17,4,2,'T'],['coat',25,22,1,1,'S'],['mirror',30,22,1,1,'S'],['bed',14,26,3,3,0],['wardrobe',20,18,3,1,'S'],['night',17,26,1,1,'T'],['desk',36,9,3,1,'T'],['shelf',41,8,2,1,'S'],['toilet',41,18,1,1,'T'],['sink',38,18,2,1,'T'],['tub',36,21,3,1,'T'],['bench',36,24,5,1,'T'],['rack',41,28,1,1,'S'],['mbox',30,37,1,1,'T'],['trash',35,35,1,1,'T'],['tree',14,3,1,1,'S'],['tree',46,4,1,1,'S'],['tree',48,33,1,1,'S'],['tree',18,36,1,1,'S'],['toolbox',3,10,1,1,'T']],
+ [['bed',14,9,4,3,0],['night',18,9,1,1,'T'],['wardrobe',14,15,3,1,'S'],['dresser',20,9,2,1,'S'],['bed',14,20,3,3,0],['wardrobe',20,28,3,1,'S'],['shelf',14,28,2,1,'S'],['desk',36,9,3,1,'T'],['shelf',41,8,2,1,'S'],['cabinet',36,15,3,1,'S'],['tub',36,21,3,1,'T'],['toilet',41,19,1,1,'T'],['sink',38,19,2,1,'T'],['bench',37,28,4,1,'T'],['crib',25,9,2,2,0],['box',30,12,1,1,'S'],['box',25,28,1,1,'S']]
+];
+const BASE=[groundMap(),upstairsMap()];
+const FG=BASE.map(m=>m.map(r=>r.slice()));
+const T=(x,y,z)=>{
+ const g=FG[z];
+ if(!g)throw new Error('T() needs a floor, got '+z);
+ return (g[y|0]||[])[x|0]||'F';
+};
 
-<div id="screen-win" class="screen hidden">
-  <h1>THE <span>BASEMENT</span></h1>
-  <p id="win-sub"></p>
-  <p>You descend the humming stairs. Whatever he was hiding… you found it.</p>
-  <button id="btn-win-menu">PLAY AGAIN</button>
-</div>
+/* rooms: x0,y0,x1,y1, colour, name, floor */
+const ROOMS=[
+ {x0:44,y0:25,x1:48,y1:28,c:'#8d97a8',n:'Vault',z:0},
+ {x0:3,y0:9,x1:6,y1:12,c:'#dccaa6',n:'Shed',z:0},
+ {x0:13,y0:8,x1:22,y1:16,c:'#e6cf9f',n:'Living Room',z:0},
+ {x0:24,y0:8,x1:33,y1:13,c:'#d9e8e4',n:'Kitchen',z:0},
+ {x0:24,y0:15,x1:33,y1:20,c:'#ead9b0',n:'Dining Room',z:0},
+ {x0:24,y0:22,x1:33,y1:29,c:'#dcdcea',n:'Foyer',z:0},
+ {x0:13,y0:18,x1:22,y1:29,c:'#eed6e4',n:'Bedroom',z:0},
+ {x0:35,y0:8,x1:42,y1:16,c:'#d9c39a',n:'Study',z:0},
+ {x0:35,y0:18,x1:42,y1:22,c:'#cde6f2',n:'Bathroom',z:0},
+ {x0:35,y0:24,x1:42,y1:29,c:'#cfcfcf',n:'Workshop',z:0},
+ {x0:13,y0:8,x1:22,y1:16,c:'#e6cf9f',n:'Master Bedroom',z:1},
+ {x0:13,y0:18,x1:22,y1:29,c:'#eed6e4',n:'Guest Bedroom',z:1},
+ {x0:24,y0:8,x1:33,y1:13,c:'#d9e8e4',n:'Nursery',z:1},
+ {x0:24,y0:15,x1:33,y1:20,c:'#ead9b0',n:'Upstairs Hall',z:1},
+ {x0:24,y0:22,x1:33,y1:29,c:'#dcdcea',n:'Landing',z:1},
+ {x0:35,y0:8,x1:42,y1:16,c:'#d9c39a',n:'Home Office',z:1},
+ {x0:35,y0:18,x1:42,y1:29,c:'#cde6f2',n:'Upstairs Bath',z:1}
+];
+const roomOf=(x,y,z)=>{
+ x|=0;y|=0;
+ for(const r of ROOMS)if(r.z===z&&x>=r.x0&&x<=r.x1&&y>=r.y0&&y<=r.y1)return r.n;
+ return z===0?'Yard':'Roof';
+};
+const roomByName=n=>ROOMS.find(r=>r.n===n);
+const roomRect=(n)=>roomByName(n);
 
-<script type="importmap">
-{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-</script>
-<script type="module" src="./src/main.js"></script>
-</body>
-</html>
+/* stations he walks to: name, x, y, floor */
+const ST={};
+[['tv',16,12,0],['couch',15,12,0],['couch',17,12,0],['shelf',21,9,0],['dshelf',41,9,0],['stove',28,9,0],['sink',25,9,0],['fridge',32,9,0],['counter',30,9,0],['ktable',28,12,0],['dtable',26,17,0],['dtable',31,17,0],['coat',25,23,0],['mirror',30,23,0],['bed',15,27,0],['wardrobe',21,19,0],['night',17,27,0],['toilet',41,19,0],['bsink',38,19,0],['tub',37,20,0],['desk',37,10,0],['bench',38,25,0],['rack',41,27,0],['basement',42,27,0],['window',13,12,0],['window',13,24,0],['window',42,12,0],['window',38,8,0],['window',17,8,0],['mailbox',30,36,0],['trash',35,34,0],['garden',5,35,0],['garden',7,35,0],['shed',4,10,0],['tree',14,4,0],['tree',46,5,0],['tree',47,33,0],['gate',28,38,0],['front',28,31,0],
+ ['bed',15,10,1],['night',18,10,1],['wardrobe',15,16,1],['dresser',21,10,1],['bed',15,21,1],['crib',26,10,1],['shelf',42,9,1],['desk',37,10,1],['cabinet',37,16,1],['tub',37,22,1],['toilet',41,20,1],['bsink',38,20,1],['bench',38,27,1],['box',25,29,1],['window',18,8,1],['window',30,8,1],['window',38,8,1],['window',18,29,1],['window',30,29,1],['window',38,29,1]
+].forEach(a=>(ST[a[0]]=ST[a[0]]||[]).push([a[1]+.5,a[2]+.5,a[3]]));
+
+/* things worth stealing: keys live on a keyring, never in a pocket */
+const CT=[
+ {id:'fridge',z:0,x:32.5,y:8.5,give:'red',t:.6,name:'fridge'},
+ {id:'toolbox',z:0,x:3.5,y:10.5,give:'pick',t:.6,name:'toolbox'},
+ {id:'odesk',z:1,x:37.5,y:9.5,give:'blue',t:1,name:'office desk'}
+].map(c=>Object.assign(c,{done:0,seen:0}));
+const KEYNAMES={red:'red key',blue:'blue key',pick:'lockpick'};
+
+/* hiding places: wardrobes and one space under a bed */
+const HIDES=[
+ {id:'w0',z:0,x:20,y:18,label:'the bedroom wardrobe'},
+ {id:'b0',z:0,x:15,y:27,label:'under the bed'},
+ {id:'w1',z:1,x:14,y:15,label:'the master wardrobe'},
+ {id:'w2',z:1,x:20,y:28,label:'the guest wardrobe'},
+ {id:'c2',z:1,x:36,y:15,label:'the office cabinet'}
+];
+const SECRET={x:46.5,y:26.5,z:0,got:0};
+const SRC=`watch_tv tv 25-40 b-6 17-24
+watch_news tv 15-25 b-4 6-9
+channel_surf tv 8-14 b-3 *
+watch_cooking_show tv 15-25 b-3 *
+watch_game tv 20-35 b-6 18-23
+fall_asleep_tv tv 20-30 e-5,b-2 21-26
+nap_on_couch couch 20-30 e-4 13-17
+read_paper couch 15-25 b-4 6-10
+do_crossword couch 15-25 b-5 *
+sip_coffee couch 8-14 t-3,b-2 6-11
+hum_a_tune couch 6-10 b-2 *
+read_book shelf 15-30 b-5 *
+dust_shelf shelf 10-18 b-2,d-3 *
+rearrange_books shelf 10-16 b-3 *
+look_up_recipe shelf 8-12 b-2 17-20
+cook_dinner stove 22-32 h-4 17-20
+fry_eggs stove 12-20 h-3 6-10
+boil_pasta stove 14-20 h-3 12-14,18-20
+make_tea stove 10-14 t-4 *
+bake_bread stove 25-35 h-2,b-3 14-17
+wash_dishes sink 15-22 d-3,y-1 *
+drink_water sink 5-8 t-7 *
+rinse_vegetables sink 8-12 b-1 17-19
+fill_kettle sink 6-9 t-2 *
+open_fridge fridge 6-10 h-3 *
+midnight_snack fridge 8-12 h-5 22-27
+check_leftovers fridge 8-12 h-2 *
+pour_milk fridge 6-9 t-3,h-1 *
+chop_veg counter 12-18 b-2 16-19
+wipe_counter counter 10-15 d-3 *
+make_sandwich counter 10-14 h-4 11-14
+eat_dinner ktable 18-26 h-7 18-21
+eat_breakfast ktable 12-18 h-6 6-9
+eat_lunch ktable 14-20 h-6 12-14
+polish_table dtable 10-16 d-3 *
+set_table dtable 8-12 b-1 16-19
+write_letters dtable 15-25 b-5 *
+fold_napkins dtable 6-9 b-2 *
+hang_coat coat 5-8 d-2 *
+check_pockets coat 6-9 b-2 *
+comb_mustache mirror 8-12 y-3 *
+admire_mirror mirror 6-10 b-3 *
+sleep bed 60-90 e-9 22-30
+make_bed bed 10-15 d-3 6-10
+lie_awake bed 15-25 e-2 22-27
+read_in_bed bed 15-25 b-4,e-2 21-24
+change_clothes wardrobe 10-14 y-3 *
+iron_shirt wardrobe 15-22 b-2 *
+fold_laundry wardrobe 12-18 d-2 *
+wind_alarm_clock night 5-8 b-1 21-24
+use_toilet toilet 8-12 l-9 *
+flush_twice toilet 5-7 l-2 *
+brush_teeth bsink 8-12 y-4 6-9,21-24
+wash_hands bsink 6-9 y-3 *
+shave bsink 10-14 y-3 6-9
+take_bath tub 30-40 y-9 19-22
+scrub_tub tub 12-18 d-3 *
+pay_bills desk 20-30 b-4 9-17
+write_notes desk 15-25 b-4 *
+study_map desk 15-22 b-3 *
+lock_drawer desk 6-9 b-1 *
+count_cash desk 12-18 b-3 *
+file_papers dshelf 12-18 d-2,b-2 *
+check_safe dshelf 8-12 b-2 *
+fix_toaster bench 25-35 b-5 9-17
+sharpen_tools bench 15-22 b-3 *
+hammer_nails bench 12-18 b-3 *
+saw_planks bench 15-22 b-4 *
+polish_gear bench 12-16 b-2 *
+organize_tools rack 12-18 d-2,b-2 *
+oil_hinges rack 8-12 b-2 *
+check_basement_lock basement 6-9 b-1 *
+polish_basement_lock basement 8-12 b-2 *
+listen_at_basement basement 10-16 b-3 *
+look_out_window window 10-18 b-3 *
+close_curtains window 6-9 b-1 17-22
+check_latches window 8-12 b-1 *
+check_mail mailbox 6-10 b-2 9-17
+send_letter mailbox 5-8 b-1 *
+take_out_trash trash 8-12 d-3 18-21
+sort_recycling trash 10-14 d-2 *
+water_plants garden 15-22 b-3 7-10,16-19
+pick_tomatoes garden 12-18 b-2 *
+weed_garden garden 15-25 b-3 *
+prune_roses garden 12-18 b-3 *
+feed_birds garden 8-12 b-2 6-9
+fetch_tools shed 10-14 b-2 *
+tidy_shed shed 15-22 d-2,b-2 *
+rake_leaves tree 15-22 b-3 *
+inspect_fence gate 10-15 b-2 *
+look_down_street gate 10-16 b-3 *
+sweep_porch front 12-18 d-2,b-2 7-10
+check_front_door front 6-9 b-1 20-23
+watch_documentary tv 20-30 b-4 20-23
+fix_antenna tv 10-16 b-2 *
+fluff_cushions couch 8-12 d-2,b-1 *
+find_remote couch 5-8 b-2 *
+dust_bookshelf shelf 12-18 d-3 *
+donate_books shelf 15-22 b-2 10-15
+brew_tea stove 8-14 t-4,b-2 15-18
+scrub_hob stove 12-18 d-3 *
+sterilise_jars stove 18-26 d-2,b-2 13-16
+soak_pots sink 15-22 d-3 *
+descale_kettle sink 10-16 d-2 *
+defrost_freezer fridge 25-35 d-3,b-2 8-11
+stock_fridge fridge 15-25 h-3 8-11,17-20
+knead_dough counter 18-28 b-2,h-2 14-17
+sort_pantry counter 14-22 d-3 *
+sharpen_knives counter 10-14 d-1 *
+polish_silver dtable 15-25 d-2,b-2 *
+arrange_flowers dtable 8-12 b-2 9-12
+sweep_floor dtable 10-16 d-3 *
+sew_button coat 10-16 d-1,b-2 *
+sort_scarves coat 8-12 d-2 *
+trim_beard mirror 12-18 y-3 6-9
+practise_smile mirror 5-9 b-2 *
+change_sheets bed 20-30 d-3,e-2 9-12
+fluff_pillows bed 8-12 d-2 *
+match_socks wardrobe 15-25 d-2,b-2 *
+air_suits wardrobe 12-18 d-3 *
+find_glasses night 6-10 b-2 6-9
+set_alarm night 4-7 b-1 21-24
+fix_cistern toilet 15-25 d-3 *
+clean_mirror bsink 12-20 d-3 *
+refill_soap bsink 5-8 b-1 *
+scrub_ring tub 15-25 d-4 *
+soak_feet tub 20-30 e-3,l-2 20-23
+balance_ledger desk 25-35 b-4 18-21
+sharpen_pencils desk 10-16 d-2 *
+write_shopping_list desk 10-16 b-3 *
+alphabetise_files dshelf 18-28 d-3,b-3 9-17
+stamp_invoices dshelf 12-20 b-2 9-17
+oil_saw bench 15-25 d-3,b-2 *
+sort_screws bench 12-20 d-2 *
+build_birdhouse bench 25-35 b-4 10-16
+count_nails rack 10-18 b-2,d-2 *
+label_jars rack 8-14 d-2,b-2 *
+check_generator basement 20-30 b-3 8-12
+sweep_steps basement 12-20 d-3 *
+watch_street window 12-20 b-3 15-19
+clean_glass window 10-16 d-2 *
+sort_post mailbox 6-10 b-2 8-11
+write_reply mailbox 15-25 b-3 *
+hose_bins trash 10-16 d-3 *
+flatten_boxes trash 12-18 d-2 *
+trim_hedge garden 20-30 b-4,e-2 8-11
+plant_bulbs garden 15-25 d-1,b-3 9-12
+pick_beans garden 10-16 b-2 16-19
+oil_ladder shed 12-20 d-3,b-2 *
+restock_shelf shed 15-25 d-3 *
+pick_apples tree 15-25 b-3,h-2 9-12
+hang_feeder tree 8-12 b-2 6-9
+oil_gate gate 12-20 d-2,b-2 *
+check_hinges gate 8-14 d-1,b-2 *
+wash_step front 10-16 d-3 *
+shake_mat front 6-10 d-3 *`;
+const TASKS=SRC.trim().split('\n').filter(Boolean).map(l=>{
+ const p=l.trim().split(/\s+/),d=p[2].split('-').map(Number),eff={};
+ p[3].split(',').forEach(e=>eff[e[0]]=parseFloat(e.slice(1))/10);
+ return {name:p[0],st:p[1],a:d[0],b:d[1],eff,hrs:p[4]==='*'?null:p[4].split(',').map(r=>r.split('-').map(Number))};
+});
+const inWin=(t,h)=>!!t.hrs&&t.hrs.some(r=>(h>=r[0]&&h<r[1])||(h+24>=r[0]&&h+24<r[1]));
+
+/* --------------------------------------------------------- long memory
+   MEM survives catches and reloads within one campaign. It is wiped by
+   NEW GAME, and a fresh round never inherits world state from the last. */
+const MK='hm2d.v1';
+const memBlank=()=>({catches:0,wins:0,entries:{},rooms:{},boarded:[],traps:[],cams:[],plans:[],front:0,decoys:{},heat:{},hides:{},hours:new Array(24).fill(0)});
+let MEM=memBlank();
+try{const s=localStorage.getItem(MK);if(s){const o=JSON.parse(s);if(o&&typeof o==='object')MEM=Object.assign(MEM,o)}}catch(e){}
+if(!MEM.decoys||typeof MEM.decoys!=='object'||Array.isArray(MEM.decoys))MEM.decoys={};
+if(!MEM.heat||typeof MEM.heat!=='object'||Array.isArray(MEM.heat))MEM.heat={};
+if(!MEM.hides||typeof MEM.hides!=='object'||Array.isArray(MEM.hides))MEM.hides={};
+{const h={};for(const k in MEM.heat)h[k.includes(':')?k:'0:'+k]=MEM.heat[k];MEM.heat=h}
+if(!Array.isArray(MEM.hours))MEM.hours=new Array(24).fill(0);
+while(MEM.hours.length<24)MEM.hours.push(0);
+MEM.hours=MEM.hours.slice(0,24).map(v=>+v||0);
+for(const k of ['plans','boarded','traps','cams'])if(!Array.isArray(MEM[k]))MEM[k]=[];
+if(!MEM.entries||typeof MEM.entries!=='object')MEM.entries={};
+if(!MEM.rooms||typeof MEM.rooms!=='object')MEM.rooms={};
+/* v1 stored cells as "x,y"; every cell key now carries its floor. */
+MEM.boarded=MEM.boarded.map(k=>String(k).includes(':')?String(k):'0:'+k);
+MEM.traps=MEM.traps.map(k=>String(k).includes(':')?String(k):'0:'+k);
+MEM.cams=MEM.cams.map(k=>String(k).includes(':')?String(k):'0:'+k);
+let memDirty=0,memSaveT=0;
+const save=()=>{try{localStorage.setItem(MK,JSON.stringify(MEM))}catch(e){}};
+const markMem=()=>{memDirty=1};
+function flushMem(dt){memSaveT-=dt;if(memDirty&&memSaveT<=0){memSaveT=2.5;save();memDirty=0}}
+/* route heat: 4x4 blocks, per floor, so a hot spot upstairs is not a hot
+   spot downstairs just because the coordinates match */
+const heatKey=(x,y,z)=>(z|0)+':'+((x|0)>>2)+','+((y|0)>>2);
+const heatAt=(x,y,z)=>MEM.heat[heatKey(x,y,z)]||0;
+function roomHeat(name){const r=roomByName(name);if(!r)return 0;let s=0;for(let y=r.y0;y<=r.y1;y+=4)for(let x=r.x0;x<=r.x1;x+=4)s+=MEM.heat[heatKey(x,y,r.z)]||0;return s}
+function hourAffinity(){const h=((hour|0)+24)%24;let mx=1;for(const v of MEM.hours)if(v>mx)mx=v;return cl((MEM.hours[h]||0)/mx,0,1)}
+function addHeat(x,y,z,n){const k=heatKey(x,y,z);MEM.heat[k]=Math.min(999,(MEM.heat[k]||0)+n);markMem()}
+
+/* ----------------------------------------------------------- world state */
+const DR=[],DRM={},ITEMS=[],SPL=[],TRAPS=[],CAMS=[],PR=[],NZ=[];
+let hour=18,state='menu',msgT=0,tm=0,ZOOM=26,SHOW={bel:0,path:0},frontT=-99;
+let mapRev=0;
+const ITEMSPEC=[['can',29,12],['can',25,12],['vase',13,9],['vase',31,12],['vase',31,18],['chair',26,18],['chair',32,19],['box',40,27],['box',36,27],['box',20,25],['lamp',22,9]];
+
+const CC=(z,x,y)=>z*W*H+(y|0)*W+(x|0);
+function buildDoors(){
+ DR.length=0;for(const k in DRM)delete DRM[k];
+ for(let z=0;z<NF;z++)for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  const c=FG[z][y][x];
+  if(c==='D'||c==='L'||c==='B'){const d={x,y,z,o:0,t:0,hold:0};DR.push(d);DRM[cellKey(z,x,y)]=d}
+ }
+}
+const doorClosed=(x,y,z)=>{const d=DRM[cellKey(z,x,y)];return !d||d.o<.35};
+const trapAt=(x,y,z)=>TRAPS.some(t=>t.z===z&&t.x===(x|0)&&t.y===(y|0));
+const addTrap=(x,y,z)=>{TRAPS.push({x:x|0,y:y|0,z,armed:1})};
+const addCam=(x,y,z)=>{CAMS.push({x:x+.5,y:y+.5,z,a:0,seeT:0,cd:0,sees:0})};
+
+let P,N,visL=[],cone=[];
+const bel=new Float32Array(NF*W*H),vis=new Uint8Array(NF*W*H);
+
+function resetWorld(){
+ for(let z=0;z<NF;z++)FG[z]=BASE[z].map(r=>r.slice());
+ MEM.boarded.forEach(k=>{const[z,x,y]=parseCell(k);if(FG[z]&&FG[z][y]&&FG[z][y][x]!==undefined)FG[z][y][x]='X'});
+ if(MEM.front)FG[0][30][28]='L';
+ buildDoors();
+ for(const c of CT){c.done=0;c.seen=0}
+ for(const p of PLOTS)p.n=3;
+ SECRET.got=0;
+ SPL.length=0;PR.length=0;NZ.length=0;
+ ITEMS.length=0;
+ ITEMSPEC.forEach(a=>ITEMS.push({k:a[0],x:a[1]+.5,y:a[2]+.5,z:0,hx:a[1]+.5,hy:a[2]+.5,vx:0,vy:0,vz:0,fly:0,cl:0}));
+ TRAPS.length=0;CAMS.length=0;
+ MEM.traps.forEach(k=>{const[z,x,y]=parseCell(k);addTrap(x,y,z)});
+ MEM.cams.forEach(k=>{const[z,x,y]=parseCell(k);addCam(x,y,z)});
+ if(P){P.hide=null;P.stairT=0}
+ mapRev++;
+ if(bel)bel.fill(0);
+ if(vis)vis.fill(0);
+ visL=[];cone=[];
+}
+
+resetWorld();
+
+/* ------------------------------------------------------- pathfinding
+   A* (8-way, octile, no corner cutting, clearance costs) plus string
+   pulling. Every query names its floor: the two floors never mix. */
+const solid=(x,y,z)=>{const c=T(x,y,z);return c==='#'||c==='F'||c==='S'||c==='T'||c==='W'||c==='X'};
+const npass=(x,y,z)=>!solid(x,y,z);
+const ppass=(x,y,z)=>npass(x,y,z)&&T(x,y,z)!=='L'&&T(x,y,z)!=='B';
+const NB=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.414],[1,-1,1.414],[-1,1,1.414],[-1,-1,1.414]];
+const AG=new Float32Array(W*H),AC=new Int32Array(W*H),AV=new Int32Array(W*H),AX=new Int32Array(W*H);
+let AS=0;
+class Heap{
+ constructor(){this.a=[]}
+ get n(){return this.a.length}
+ push(id,f){const a=this.a;a.push([f,id]);let i=a.length-1;while(i>0){const p=(i-1)>>1;if(a[p][0]<=a[i][0])break;[a[p],a[i]]=[a[i],a[p]];i=p}}
+ pop(){const a=this.a,t=a[0],l=a.pop();if(a.length){a[0]=l;let i=0;for(;;){let m=i,L=2*i+1,r=L+1;if(L<a.length&&a[L][0]<a[m][0])m=L;if(r<a.length&&a[r][0]<a[m][0])m=r;if(m===i)break;[a[m],a[i]]=[a[i],a[m]];i=m}}return t[1]}
+}
+function costAt(x,y,z){
+ let c=1;const ch=T(x,y,z);
+ if(ch==='D')c+=.4;if(ch==='L'||ch==='B')c+=2;if(ch==='w')c+=3.2;if(ch==='U'||ch==='V')c+=.6;
+ let w=0;if(solid(x+1,y,z))w++;if(solid(x-1,y,z))w++;if(solid(x,y+1,z))w++;if(solid(x,y-1,z))w++;
+ c+=w*.2;if(trapAt(x,y,z))c+=14;return c;
+}
+function nearestFree(x,y,z,pass=npass){
+ x|=0;y|=0;
+ if(pass(x,y,z))return[x,y];
+ for(let r=1;r<12;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++)
+  if(Math.max(Math.abs(dx),Math.abs(dy))===r&&pass(x+dx,y+dy,z))return[x+dx,y+dy];
+ return[x,y];
+}
+const circFree=(x,y,z,r)=>npass(Math.floor(x-r),Math.floor(y-r),z)&&npass(Math.floor(x+r),Math.floor(y+r),z)&&npass(Math.floor(x-r),Math.floor(y+r),z)&&npass(Math.floor(x+r),Math.floor(y-r),z);
+const standableCell=(x,y,z,r=.29)=>npass(x,y,z)&&circFree(x+.5,y+.5,z,r);
+function nearestStandable(x,y,z){
+ let b=null,bd=1e9;
+ for(let r=0;r<=4;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+  if(r>0&&Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+  const nx=Math.floor(x+dx),ny=Math.floor(y+dy);
+  if(!standableCell(nx,ny,z,.28))continue;
+  const d=dist(x,y,nx+.5,ny+.5);if(d<bd){bd=d;b=[nx,ny]}
+ }
+ return b;
+}
+function clearLine(ax,ay,bx,by,z){
+ const d=Math.hypot(bx-ax,by-ay),n=Math.ceil(d/.2);
+ for(let i=1;i<=n;i++)if(!circFree(ax+(bx-ax)*i/n,ay+(by-ay)*i/n,z,.36))return 0;
+ return 1;
+}
+function findPath(sx,sy,tx,ty,z){
+ let s=nearestFree(sx,sy,z),t=nearestFree(tx,ty,z);
+ const id=(x,y)=>y*W+x,tid=id(t[0],t[1]),sid=id(s[0],s[1]);
+ AS++;
+ const oct=(x,y)=>{const dx=Math.abs(x-t[0]),dy=Math.abs(y-t[1]);return dx+dy-.586*Math.min(dx,dy)};
+ const h=new Heap();
+ AG[sid]=0;AV[sid]=AS;AC[sid]=-1;h.push(sid,oct(s[0],s[1]));
+ while(h.n){
+  const cur=h.pop(),cx=cur%W,cy=(cur/W)|0;
+  if(AX[cur]===AS)continue;
+  AX[cur]=AS;
+  if(cur===tid)break;
+  for(const d of NB){
+   const nx=cx+d[0],ny=cy+d[1];
+   if(!npass(nx,ny,z))continue;
+   if(d[0]&&d[1]&&(!npass(cx+d[0],cy,z)||!npass(cx,cy+d[1],z)))continue;
+   const ni=id(nx,ny);
+   if(AX[ni]===AS)continue;
+   const g=AG[cur]+d[2]*costAt(nx,ny,z);
+   if(AV[ni]!==AS||g<AG[ni]){AV[ni]=AS;AG[ni]=g;AC[ni]=cur;h.push(ni,g+oct(nx,ny))}
+  }
+ }
+ if(AV[tid]!==AS)return[];
+ const pts=[];let c=tid;
+ while(c!==sid){pts.unshift([c%W+.5,((c/W)|0)+.5]);c=AC[c]}
+ if(Math.floor(tx)===t[0]&&Math.floor(ty)===t[1]&&pts.length)pts[pts.length-1]=[tx,ty];
+ const out=[];let ax=sx,ay=sy,i=0;
+ while(i<pts.length){
+  let j=pts.length-1;
+  while(j>i&&!clearLine(ax,ay,pts[j][0],pts[j][1],z))j--;
+  out.push(pts[j]);ax=pts[j][0];ay=pts[j][1];i=j+1;
+ }
+ return out;
+}
+function mvc(o,dx,dy,r,ok){
+ for(const a of[[dx,0],[0,dy]]){
+  const nx=o.x+a[0],ny=o.y+a[1];let f=1;
+  for(const q of[[-r,-r],[r,-r],[-r,r],[r,r]])if(!ok(Math.floor(nx+q[0]),Math.floor(ny+q[1]))){f=0;break}
+  if(f){o.x=nx;o.y=ny}
+ }
+}
+function los(ax,ay,bx,by,z){
+ const d=Math.hypot(bx-ax,by-ay),n=Math.ceil(d/.2);
+ for(let i=1;i<n;i++){
+  const x=ax+(bx-ax)*i/n,y=ay+(by-ay)*i/n,c=T(x,y,z);
+  if(c==='#'||c==='S'||c==='X'||c==='L'||c==='B'||(c==='D'&&doorClosed(x|0,y|0,z)))return 0;
+ }
+ return 1;
+}
+/* corner-safe sight: a target hugging a corner is only visible once the
+   centre of its cell is in view, so he cannot peek round a wall edge. */
+function canSee(ax,ay,bx,by,z){
+ if(!los(ax,ay,bx,by,z))return 0;
+ const cx=bx|0,cy=by|0;
+ if(cx!==((ax+Math.sign(bx-ax)*.001)|0)&&!los(ax,ay,cx+.5,cy+.5,z)&&dist(ax,ay,cx+.5,cy+.5)>1.4)return 0;
+ return 1;
+}
+function walls(ax,ay,bx,by,z){
+ const d=Math.hypot(bx-ax,by-ay),n=Math.ceil(d/.3);let w=0,pv=0;
+ for(let i=1;i<n;i++){
+  const c=T(ax+(bx-ax)*i/n,ay+(by-ay)*i/n,z),b=c==='#'||c==='X'||c==='S'||c==='L'||c==='B';
+  if(b&&!pv)w++;pv=b;
+ }
+ return w;
+}
+function inspectSpot(x,y,fx,fy,z,avoidBroken=true){
+ let b=null,bd=1e9;
+ for(let r=1;r<=3;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+  if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+  const nx=x+dx,ny=y+dy;
+  if(nx<1||ny<1||nx>=W-1||ny>=H-1)continue;
+  if(avoidBroken&&T(nx,ny,z)==='w')continue;
+  if(!standableCell(nx,ny,z,.29))continue;
+  const sc=Math.hypot(dx,dy)*1.2+Math.hypot(nx+.5-fx,ny+.5-fy)*.38;
+  if(sc<bd){bd=sc;b=[nx+.5,ny+.5]}
+ }
+ if(b)return b;
+ const q=nearestFree(x,y,z);
+ return[q[0]+.5,q[1]+.5];
+}
+function evictCell(x,y,z){
+ let ok=true;
+ for(const [o,pass] of [[N,npass],[P,ppass]]){
+  if(!o||o.z!==z)continue;
+  if((o.x|0)===x&&(o.y|0)===y){
+   let q=null;
+   for(let r=1;r<12&&!q;r++)for(let dy=-r;dy<=r&&!q;dy++)for(let dx=-r;dx<=r&&!q;dx++){
+    if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+    if(dx===0&&dy===0)continue;
+    const nx=x+dx,ny=y+dy;
+    if(pass(nx,ny,z)&&circFree(nx+.5,ny+.5,z,o===P?.33:.29))q=[nx,ny];
+   }
+   if(q){o.x=q[0]+.5;o.y=q[1]+.5;if(o===N){N.path=[];N.repath=1}if(o===P){P.vx=P.vy=0;say('You scramble clear.',1.5)}}
+   else ok=false;
+  }
+ }
+ return ok;
+}
+function unstickEntity(o,pass,rad){
+ if(pass(o.x,o.y,o.z)&&circFree(o.x,o.y,o.z,rad))return false;
+ let q=null;
+ for(let r=1;r<12&&!q;r++)for(let dy=-r;dy<=r&&!q;dy++)for(let dx=-r;dx<=r&&!q;dx++){
+  if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+  const nx=(o.x|0)+dx,ny=(o.y|0)+dy;
+  if(pass(nx,ny,o.z)&&circFree(nx+.5,ny+.5,o.z,rad))q=[nx,ny];
+ }
+ if(!q)q=nearestFree(o.x,o.y,o.z,pass);
+ if(q){o.x=q[0]+.5;o.y=q[1]+.5;return true}
+ return false;
+}
+function forceUnstuck(){
+ if(state!=='play')return;
+ if(unstickEntity(N,npass,.29)){N.path=[];N.repath=1;N.stuck=0;N.jink=0}
+ if(unstickEntity(P,ppass,.33)){P.vx=P.vy=0;say('You squeeze free.',1.3)}
+}
+
+/* stairs: both floors share the stairwell footprint, so a stair tile can
+   simply swap the floor at the same coordinates. */
+const STAIRS=[[31,27],[32,27],[31,28],[32,28]];
+const onStair=(x,y,z)=>{const c=T(x,y,z);return c==='U'||c==='V'};
+const stairCells=(z)=>STAIRS.filter(a=>onStair(a[0],a[1],z));
+function nearestStair(x,y,z){
+ const c=stairCells(z);
+ if(!c.length)return null;
+ let b=null,bd=1e9;
+ for(const s of c){const d=dist(x,y,s[0]+.5,s[1]+.5);if(d<bd){bd=d;b=s}}
+ return b;
+}
+
+/* ---------------------------------------------------------------- player */
+let mouse={x:0,y:0},K={},cam={x:28,y:34};
+function resetPlayer(){
+ P={x:28.5,y:37.5,z:0,vx:0,vy:0,aim:-PI/2,inv:[null,null,null,null],sel:0,
+    keys:{red:0,blue:0,pick:0},hold:0,slow:0,trap:0,crouch:0,sprint:0,ft:0,
+    tgt:null,lastCell:'',hide:null,stairT:0,spotted:0};
+ cam.x=P.x;cam.y=P.y;
+}
+const held=()=>P.inv[P.sel];
+const invAdd=o=>{
+ if(!P.inv[P.sel]){P.inv[P.sel]=o;return P.sel}
+ const i=P.inv.indexOf(null);if(i<0)return -1;P.inv[i]=o;return i;
+};
+const invHas=o=>P.inv.includes(o);
+const hasKey=k=>!!P.keys[k];
+const keyCount=()=>P.keys.red+P.keys.blue+P.keys.pick;
+const need0=()=>({h:.3,t:.3,b:.4,e:.1,y:.3,l:.2,d:0,s:0});
+function resetN(){
+ N={
+  x:28.5,y:25.5,z:0,a:PI/2,st:'idle',label:'',mode:'idle',prio:0,script:[],si:0,stepT:0,path:[],
+  al:0,need:(N&&N.need)||need0(),recent:[],lastSeen:null,pvel:{x:0,y:0},pp:null,
+  chaseT:0,lost:0,throwCd:3,windup:0,sleeping:0,stun:0,done:0,sees:0,periph:0,
+  vt:0,ct:0,bt:0,spd:2.2,stuck:0,repath:0,jink:0,unT:0,heatT:0,needT:0,
+  searchT:0,searchN:0,cleared:[],carry:null,decoy:{},focus:null,lastWindow:null,goal:null,mass:0,
+  chaseGoal:null,chaseGoalT:0,lastX:0,lastY:0,noProgress:0,checkHide:null,goFloor:null,component:0,pathGoal:null,stairT:0
+ };
+}
+const say=(s,t)=>{const m=$('msg');m.textContent=s;m.style.display='block';msgT=t||2.5};
+function noise(x,y,z,r,tag,ox,oy){NZ.push({x,y,z,r,t:0});if(NZ.length>40)NZ.shift();onNoise(x,y,z,r,tag,ox==null?x:ox,oy==null?y:oy)}
+
+/* ------------------------------------------------------- neighbour scripts */
+const wait=(t,label,o)=>Object.assign({wait:t,label},o||{});
+const go=(x,y,z)=>({go:[x,y,z]});
+const fn=f=>({fn:f});
+const face=(x,y)=>{N.a=Math.atan2(y-N.y,x-N.x)};
+
+function windowFixScript(p,board){
+ const z=p.z|0;
+ const s=inspectSpot(p.x,p.y,N.x,N.y,z,true);
+ const label=board?'hammering boards over the window…':'replacing the glass…';
+ return[
+  go(s[0],s[1],z),
+  wait(board?2.6:2.2,label,{face:[p.x+.5,p.y+.5]}),
+  fn(()=>{
+   const c=T(p.x,p.y,z);
+   if(board){
+    if(c!=='w'&&c!=='W')return;
+    if(!evictCell(p.x,p.y,z))return;
+    FG[z][p.y][p.x]='X';
+    const k=cellKey(z,p.x,p.y);if(!MEM.boarded.includes(k))MEM.boarded.push(k);
+    save();
+    say('He boarded up a window.');
+   }else{
+    if(c!=='w')return;
+    if(!evictCell(p.x,p.y,z))return;
+    FG[z][p.y][p.x]='W';
+    say('He repaired a broken window.');
+   }
+   markReach();
+   if(unstickEntity(N,npass,.29)){N.path=[];N.repath=1}
+  })
+ ];
+}
+function searchSweep(p){
+ const pts=(p.pts&&p.pts.length)?p.pts:[[p.x,p.y,p.z]];
+ const out=[];
+ for(const q of pts)out.push(go(q[0],q[1],q[2]),wait(.7,'sweeping the room',{sweep:1}));
+ if(!out.length)out.push(wait(1,'listening…',{sweep:1}));
+ return out;
+}
+const S={
+ startled:p=>[fn(()=>face(p.x,p.y)),wait(.5,'!?')],
+ noticing:p=>[fn(()=>face(P.x,P.y)),wait(.5,'who is that?')],
+ wake_up:p=>[wait(1.2,'zzz… what was that?'),fn(()=>{N.sleeping=0;if(p&&p.then)p.then()})],
+ investigate_noise:p=>[
+   go(p.x,p.y,p.z),wait(1.2,'hmm…',{sweep:1}),
+   fn(()=>{
+     const a=nearestFree(p.x,p.y,N.z);
+     const n=NB[(Math.random()*4)|0];
+     const q=nearestFree(a[0]+n[0]*2,a[1]+n[1]*2,N.z);
+     ins(S.peek_corner({x:q[0]+.5,y:q[1]+.5,z:N.z}));
+   })
+ ],
+ inspect_impact:p=>[go(p.x,p.y,p.z),wait(1.4,'what fell over?',{sweep:1}),fn(()=>{if(p.origin)run('follow_thrower',p.origin,2)})],
+ follow_thrower:p=>[go(p.x,p.y,p.z),wait(1.8,'somebody threw that!',{sweep:1}),fn(()=>{N.al=Math.max(N.al,.55)})],
+ peek_corner:p=>[go(p.x,p.y,p.z),wait(.9,'peeking round the corner',{sweep:1})],
+ check_window:p=>{
+   const z=p.z|0;
+   const s=inspectSpot(p.x,p.y,N.x,N.y,z,true);
+   return[go(s[0],s[1]),wait(1.6,'a window is broken!',{face:[p.x+.5,p.y+.5]}),fn(()=>{N.lastWindow={x:p.x,y:p.y,z,t:tm}})];
+ },
+ check_open_door:p=>{
+   const z=p.z|0;
+   const s=inspectSpot(p.x,p.y,N.x,N.y,z,false);
+   return[
+    go(s[0],s[1]),
+    wait(1.1,'who left this open?',{face:[p.x+.5,p.y+.5]}),
+    fn(()=>{const d=DRM[cellKey(z,p.x|0,p.y|0)];if(d&&(d.o>.35||d.t>0)){d.hold=3;d.t=0}}),
+    wait(.5,'closing it')
+   ];
+ },
+ close_door:p=>[go(p.x,p.y,p.z),wait(.7,'closing the door'),fn(()=>{const d=DRM[cellKey(p.z|0,p.x|0,p.y|0)];if(d){d.hold=3;d.t=0}})],
+ lost_player:p=>[go(p.x,p.y,p.z),wait(1.2,'where did he go?!',{sweep:1})],
+ search_last_seen:p=>[go(p.x,p.y,p.z),wait(1.5,'he was right here…',{sweep:1})],
+ search_predicted:p=>[go(p.x,p.y,p.z),wait(1.6,'he went this way…',{sweep:1})],
+ search_belief:p=>[go(p.x,p.y,p.z),wait(1.4,'checking the likeliest spot',{sweep:1})],
+ search_room:p=>[go(p.x,p.y,p.z),wait(1.5,'sweeping the room',{sweep:1})],
+ search_sweep:searchSweep,
+ search_scan:p=>[wait(1.8,'listening…',{sweep:1})],
+ search_closet:p=>[go(p.x,p.y,p.z),wait(1,'opens the wardrobe'),wait(.8,'nothing…')],
+ search_bed:p=>[go(p.x,p.y,p.z),wait(1,'looks under the bed'),wait(.8,'nothing…')],
+ search_tub:p=>[go(p.x,p.y,p.z),wait(.9,'checks behind the shower curtain'),wait(.7,'nothing…')],
+ search_yard:p=>[go(p.x,p.y,p.z),wait(1.5,'scanning the yard',{sweep:1})],
+ set_bear_trap:p=>{
+   const z=p.z|0;
+   const pick=trapValid(p.x|0,p.y|0,z)?{x:p.x|0,y:p.y|0}:bestTrapNear(p.x|0,p.y|0,z,3);
+   if(!pick)return[wait(.6,'no use putting a trap there…')];
+   return[go(pick.x+.5,pick.y+.5,z),wait(2.5,'setting a bear trap…'),fn(()=>{
+     if(!trapValid(pick.x,pick.y,z))return;
+     addTrap(pick.x,pick.y,z);
+     const k=cellKey(z,pick.x,pick.y);
+     if(!MEM.traps.includes(k))MEM.traps.push(k);
+     save();
+   })];
+ },
+ board_window:p=>windowFixScript(p,true),
+ repair_window:p=>windowFixScript(p,false),
+ lock_front:p=>{
+   const s=inspectSpot(28,30,N.x,N.y,0,false);
+   return[
+    go(s[0],s[1],0),wait(2,'changing the front door lock…'),
+    fn(()=>{
+     if(!evictCell(28,30,0))return;
+     FG[0][30][28]='L';MEM.front=1;
+     if(DRM[cellKey(0,28,30)]){DRM[cellKey(0,28,30)].o=0;DRM[cellKey(0,28,30)].t=0}
+     save();say('He changed the front door lock.');
+    })
+   ];
+ },
+ install_camera:p=>{
+   const z=p.z|0;
+   let tx=p.x|0,ty=p.y|0;
+   if(!camValid(tx,ty,z)){const q=camNearby(tx,ty,z);if(q){tx=q[0];ty=q[1]}else return[wait(.5,'nowhere good for a camera…')]}
+   return[go(tx+.5,ty+.5,z),wait(3,'mounting a security camera…'),fn(()=>{
+     if(!camValid(tx,ty,z))return;
+     addCam(tx,ty,z);
+     const k=cellKey(z,tx,ty);if(!MEM.cams.includes(k))MEM.cams.push(k);
+     save();say('He installed a camera.');
+   })];
+ },
+ inspect_container:p=>[
+   go(p.x,p.y,p.z),wait(1.5,'the '+p.c.name+' has been searched…'),
+   fn(()=>{
+     if(!p.c.done)return;
+     p.c.seen=1;N.need.s=cl(N.need.s+.5,0,1);N.al=Math.max(N.al,.55);N.done++;
+     say('He noticed the '+p.c.name+' had been searched.',2.2);
+   })
+ ],
+ pick_up_litter:p=>[go(p.x,p.y,p.z),wait(.8,'picking this up'),fn(()=>{const i=SPL.indexOf(p.s);if(i>=0)SPL.splice(i,1)})],
+ return_item:p=>[
+   go(p.i.x,p.i.y,p.i.z||0),wait(.8,'who left this here?'),
+   fn(()=>{if(!p.i.fly&&!invHas(p.i)){p.i.x=-9;p.i.y=-9}}),
+   go(p.i.hx,p.i.hy,p.i.z||0),wait(.6,'puts it back'),
+   fn(()=>{if(!invHas(p.i)&&!p.i.fly){p.i.x=p.i.hx;p.i.y=p.i.hy}})
+ ],
+ mop_splat:p=>[go(p.x,p.y,p.z),wait(3,'mopping up the mess…'),fn(()=>{const i=SPL.indexOf(p.s);if(i>=0)SPL.splice(i,1)})],
+ calm_down:p=>[wait(2,'must have been the wind…'),fn(()=>{N.al=0})],
+ grumble:p=>[wait(1.5,'grumble…')],
+ guard_basement:p=>[go(42.5,27.5),wait(7,'keeping watch on the basement',{sweep:1})],
+ guard_obj:p=>[go(p.x,p.y,p.z),wait(p.t||8,p.label||'watching this spot',{sweep:1})],
+ patrol_room:p=>[go(p.x,p.y,p.z),wait(p.t||2.4,p.label||'checking the room',{sweep:1})],
+ ambush_door:p=>[go(p.x,p.y,p.z),wait(7,'waiting by the door for you…',{face:[p.fx,p.fy]})],
+ patrol_perimeter:p=>[go(p.a[0],p.a[1],0),wait(1.2,'scanning the yard',{sweep:1}),go(p.b[0],p.b[1],0),wait(1.2,'scanning the yard',{sweep:1})],
+ check_traps:p=>[go(p.x,p.y,p.z),wait(1,'checking the trap'),fn(()=>{const t=TRAPS.find(q=>q.z===p.z&&q.x===(p.x|0)&&q.y===(p.y|0));if(t)t.armed=1})],
+ wipe_face:p=>[wait(1.4,'TOMATO! ugh!')]
+};
+const CHASE_STATES=['chase','chase_throw','chase_cutoff','chase_route','lunge'];
+const STATE_COUNT=TASKS.length+Object.keys(S).length+CHASE_STATES.length;
+
+
+function run(name,p,prio){
+ if(!S[name]){console.warn('unknown neighbour script:',name);return}
+ N.st=name;N.script=S[name](p||{});N.si=0;N.stepT=0;N.path=[];N.prio=prio||0;
+ N.spd=([2.2,2.7,3.5,3.7,4.2][cl(N.prio,0,4)]||2.2)+MEM.catches*.12;
+ N.sleeping=(N.sleeping&&name==='sleep')?1:0;
+ N.stuck=0;N.jink=0;N.repath=0;
+}
+const ins=steps=>N.script.splice(N.si+1,0,...steps);
+function endState(){
+ N.script=[];N.prio=0;N.sleeping=0;N.focus=null;
+ if(N.mode==='search')searchNext();
+ else{N.mode='idle';pickTask()}
+}
+function turn(t,dt,s){const d=Math.atan2(Math.sin(t-N.a),Math.cos(t-N.a));N.a+=cl(d,-s*dt,s*dt)}
+/* Follows N.path on the floor it was planned for. Returns 1 when the path
+   is finished, 0 while moving. One heading per frame: nothing else turns
+   him at the same time, so he cannot fight himself for a direction. */
+function follow(dt,sp,z){
+ if(!N.path.length)return 1;
+ const w=N.path[0],dx=w[0]-N.x,dy=w[1]-N.y,l=Math.hypot(dx,dy);
+ if(l<.24){N.path.shift();N.stuck=0;N.noProgress=0;return !N.path.length}
+ const ox=N.x,oy=N.y;
+ mvc(N,dx/l*sp*dt,dy/l*sp*dt,.3,(x,y)=>npass(x,y,z));
+ turn(Math.atan2(dy,dx),dt,10);
+ const moved=Math.hypot(N.x-ox,N.y-oy);
+ if(moved<sp*dt*.25){
+  N.noProgress=(N.noProgress||0)+dt;
+  if(N.noProgress>.35){N.noProgress=0;N.repath=1;N.component=(N.component||0)+1;
+   if(N.component>2){N.component=0;if(unstickEntity(N,npass,.29)){N.path=[];N.repath=1}}
+  }
+ }else{N.noProgress=0;N.stuck=0}
+ return 0;
+}
+/* Walk to a cell, changing floors through the stairwell when needed.
+   true = arrived, false = still walking, 'fail' = give up. */
+/* step off the stairs after a swap, and refuse to bounce straight back */
+function stairArrive(z){
+ let best=null,bd=1e9;
+ for(const d of NB){
+  const nx=(N.x|0)+d[0],ny=(N.y|0)+d[1];
+  if(!npass(nx,ny,z)||onStair(nx,ny,z))continue;
+  const dd=dist(N.x,N.y,nx+.5,ny+.5);
+  if(dd<bd&&standableCell(nx,ny,z,.29)){bd=dd;best=[nx,ny]}
+ }
+ if(best){N.x=best[0]+.5;N.y=best[1]+.5}
+ N.stairT=1;
+}
+function walkTo(gx,gy,gz,dt,sp){
+ if(gz==null)gz=N.z;
+ N.stairT=Math.max(0,(N.stairT||0)-dt);
+ if(gz!==N.z&&N.stairT>0)return false;
+ if(gz!==N.z){
+  const s=nearestStair(N.x,N.y,N.z);
+  if(!s)return 'fail';
+  if(onStair(N.x|0,N.y|0,N.z)||dist(N.x,N.y,s[0]+.5,s[1]+.5)<.62){
+   N.z=gz;N.path=[];N.repath=1;N.pathGoal=null;stairArrive(gz);
+   return false;
+  }
+  gx=s[0]+.5;gy=s[1]+.5;
+ }
+ if(N.repath||!N.path.length||!N.pathGoal||N.pathGoal[0]!==gx||N.pathGoal[1]!==gy){
+  N.repath=0;N.pathGoal=[gx,gy];
+  N.path=findPath(N.x,N.y,gx,gy,N.z);
+ }
+ if(follow(dt,sp,N.z)){
+  if(gz!==N.z){N.z=gz;N.path=[];N.repath=1;N.pathGoal=null;stairArrive(gz);return false}
+  const d=dist(N.x,N.y,gx,gy);
+  if(d>.9){N.pathGoal=null;return 'fail'}
+  return true;
+ }
+ return false;
+}
+function scriptUpdate(dt){
+ const s=N.script[N.si];
+ if(!s){endState();return}
+ if(s.go){
+  s.t=(s.t||0)+dt;
+  let gx=s.go[0],gy=s.go[1],gz=s.go[2];
+  if(gz==null)gz=N.z;
+  if(gz===N.z&&!npass(gx|0,gy|0,N.z)){const q=nearestFree(gx,gy,N.z);gx=q[0]+.5;gy=q[1]+.5}
+  const r=walkTo(gx,gy,gz,dt,N.spd);
+  if(r===true||r==='fail'){N.si++;N.path=[];N.jink=0;N.pathGoal=null}
+  else if(s.t>25){N.si++;N.path=[];N.repath=0;N.jink=0;N.stuck=0;N.pathGoal=null}
+ }else if(s.wait!=null){
+  N.stepT+=dt;N.label=s.label||'';
+  if(s.face)turn(Math.atan2(s.face[1]-N.y,s.face[0]-N.x),dt,6);
+  else if(s.sweep)N.a+=Math.sin(N.stepT*3)*dt*2.4;
+  if(s.eff)for(const k in s.eff)N.need[k]=cl(N.need[k]+s.eff[k]*dt/s.wait,0,1);
+  if(N.stepT>=s.wait){N.stepT=0;N.si++}
+ }else if(s.fn){s.fn();N.si++}
+}
+
+/* --------------------------------------------------------- perception
+   Sight never crosses a floor. At night his cone shrinks, but sound
+   carries further, and a sleeping man only wakes for something loud. */
+function onNoise(x,y,z,r,tag,ox,oy){
+ if(state!=='play'||N.mode==='chase'||N.stun>0)return;
+ if(z!==N.z)r*=.45;
+ const d=dist(N.x,N.y,x,y);
+ const eff=r*Math.pow(.72,walls(N.x,N.y,x,y,N.z))*(N.sleeping?.5:1)*(1+hourAffinity()*.18)*(isNightNow()?1.25:1);
+ if(d>eff)return;
+ N.need.s=cl(N.need.s+.11,0,1);
+ const f=N.focus;
+ if(f&&tm-f.t<2.8&&dist(f.x,f.y,x,y)<2.4&&N.prio<=2&&N.script.length){
+  for(let i=N.si;i<N.script.length;i++){const st=N.script[i];if(st.go){st.go=[x,y,N.z];st.p=0;break}}
+  f.x=x;f.y=y;f.t=tm;f.tag=tag;
+  return;
+ }
+ let name='investigate_noise',p={x,y,z},origin={x:ox==null?x:ox,y:oy==null?y:oy,z};
+ const th=P.throwO;
+ if(tag==='impact'||tag==='glass'){
+  const k=heatKey(x,y,z);
+  const learned=MEM.decoys[k]||0;
+  if(th&&tm-th.t<5){
+   MEM.decoys[k]=Math.min(9,learned+1);markMem();
+   if(learned>=3||MEM.catches>=2){name='follow_thrower';p={x:th.x,y:th.y,z:th.z,origin}}
+   else{name='inspect_impact';p={x,y,z,origin}}
+  }
+  if(tag==='glass'&&name!=='follow_thrower'){name='check_window';p={x:x|0,y:y|0,z}}
+ }else if(tag==='door'){name='check_open_door';p={x:x|0,y:y|0,z}}
+ if(N.sleeping){run('wake_up',{then:()=>run(name,p,2)},2);return}
+ if(N.prio>2)return;
+ if(N.mode==='search')N.mode='idle';
+ N.focus={x,y,t:tm,tag};
+ run(name,p,2);
+}
+function percept(dt){
+ N.vt-=dt;if(N.vt>0)return;
+ N.vt=.1;
+ if(P.z!==N.z||P.hide){
+  N.sees=0;N.periph=0;N.dist=99;
+  return;
+ }
+ const dx=P.x-N.x,dy=P.y-N.y,d=Math.hypot(dx,dy),ang=Math.atan2(dy,dx);
+ const df=Math.abs(Math.atan2(Math.sin(ang-N.a),Math.cos(ang-N.a)));
+ const heatBoost=Math.min(.25,heatAt(P.x,P.y,P.z)*.012);
+ const night=isNightNow()?.55:1;
+ const Rg=(N.sleeping?2.5:(11+Math.min(3,MEM.catches*.7)+hourAffinity()*1.6+heatBoost)*night)*(P.crouch?.6:1)*(P.sprint?1.2:1);
+ N.sees=(d<Rg&&(df<.95||d<1.8)&&canSee(N.x,N.y,P.x,P.y,N.z))?1:0;
+ N.periph=(!N.sees&&!N.sleeping&&d<5.5&&df<1.7&&canSee(N.x,N.y,P.x,P.y,N.z))?1:0;
+ N.dist=d;
+ N.ct-=.1;
+ if(N.ct<=0){N.ct=.15;castCone(Rg>11?11+(N.sleeping?0:2):Rg)}
+}
+function castCone(R){
+ cone=[];
+ for(const c of visL)vis[c]=0;
+ visL=[];
+ const rays=44;
+ for(let i=0;i<=rays;i++){
+  const a=N.a-.95+1.9*i/rays;
+  let r=.3,ex=N.x,ey=N.y;
+  for(;r<R;r+=.3){
+   const x=N.x+Math.cos(a)*r,y=N.y+Math.sin(a)*r,c=T(x,y,N.z);
+   if(c==='#'||c==='S'||c==='X'||c==='L'||c==='B'||(c==='D'&&doorClosed(x|0,y|0,N.z)))break;
+   ex=x;ey=y;
+   const id=CC(N.z,x,y);
+   if(!vis[id]){vis[id]=1;visL.push(id)}
+  }
+  cone.push([ex,ey]);
+ }
+}
+
+/* ------------------------------------------------------- belief + search
+   The map is per floor, with a trickle down the stairwell so a man who
+   vanished upstairs is not assumed to still be upstairs forever. */
+const bix=(z,x,y)=>z*W*H+(y|0)*W+(x|0);
+function nearestFreeP(x,y,z){
+ x|=0;y|=0;
+ if(ppass(x,y,z))return[x,y];
+ for(let r=1;r<7;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++)
+  if(Math.max(Math.abs(dx),Math.abs(dy))===r&&ppass(x+dx,y+dy,z))return[x+dx,y+dy];
+ return[x|0,y|0];
+}
+function norm(){
+ let s=0;for(let i=0;i<bel.length;i++)s+=bel[i];
+ N.mass=s;
+ if(s>1e-6)for(let i=0;i<bel.length;i++)bel[i]/=s;
+}
+function playerGoal(){
+ if(!P.keys.pick)return{x:CT[1].x,y:CT[1].y,z:0,name:'the shed'};
+ if(!P.keys.red)return{x:CT[0].x,y:CT[0].y,z:0,name:'the kitchen'};
+ if(!P.keys.blue)return{x:CT[2].x,y:CT[2].y,z:1,name:'the upstairs office'};
+ return{x:SECRET.x,y:SECRET.y,z:0,name:'the vault'};
+}
+function stamp(z,x,y,w){
+ if(!FG[z])return;
+ const c=nearestFreeP(x,y,z);
+ bel[bix(z,c[0],c[1])]+=w;
+}
+/* seed: where he was last seen, the way he was moving, the places he
+   knows the player favours, and the objective. */
+function seedBelief(){
+ bel.fill(0);
+ const ls=N.lastSeen||{x:P.x,y:P.y,z:P.z};
+ const lz=ls.z==null?N.z:ls.z;
+ const spd=Math.hypot(N.pvel.x,N.pvel.y);
+ for(let t=0;t<=3.2;t+=.4){
+  const w=t===0?1.2:.65;
+  stamp(lz,ls.x+N.pvel.x*t,ls.y+N.pvel.y*t,w*(spd>.4?1:.55));
+ }
+ const g=playerGoal();
+ if(g.z===lz){
+  const path=findPath(ls.x,ls.y,g.x,g.y,lz);
+  let added=0;
+  for(const q of path){bel[bix(lz,q[1]|0,q[0]|0)]+=.35;if(++added>12)break}
+ }
+ stamp(g.z,g.x,g.y,.5);
+ /* habits: rooms and hiding spots remembered from earlier attempts */
+ for(const r of ROOMS){
+  const v=(MEM.rooms[r.n]||0);
+  if(v>3)stamp(r.z,(r.x0+r.x1)/2,(r.y0+r.y1)/2,Math.min(.5,v*.04));
+ }
+ for(const h of HIDES){
+  const v=MEM.hides[h.id]||0;
+  if(v)stamp(h.z,h.x+.5,h.y+.5,Math.min(.8,.3+v*.15));
+ }
+ for(const k in MEM.heat){
+  const v=MEM.heat[k];if(v<2)continue;
+  const m=String(k).split(':'),box=m[1]?m[1].split(',').map(Number):null;
+  if(!box)continue;
+  stamp(+m[0]||0,box[0]*4+2,box[1]*4+2,Math.min(.55,v*.012));
+ }
+ for(const k in MEM.entries){
+  const[z,x,y]=parseCell(k);
+  if(MEM.entries[k]>0)stamp(z,x+.5,y+.5,Math.min(.6,.12*MEM.entries[k]));
+ }
+ /* if the trail ends at the stairs, split the mass between the floors */
+ const st=nearestStair(ls.x,ls.y,lz);
+ if(st&&dist(ls.x,ls.y,st[0]+.5,st[1]+.5)<2.4){
+  stamp(1-lz,st[0]+.5,st[1]+.5,.55);
+ }
+ norm();
+}
+function diffuse(){
+ const nb=new Float32Array(NF*W*H);
+ for(let z=0;z<NF;z++)for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+  const v=bel[bix(z,x,y)];
+  if(v<1e-5)continue;
+  const o=[];
+  for(const d of NB)if(ppass(x+d[0],y+d[1],z))o.push(bix(z,x+d[0],y+d[1]));
+  nb[bix(z,x,y)]+=v*.45;
+  for(const q of o)nb[q]+=v*.55/o.length;
+ }
+ bel.set(nb);
+ for(const c of visL)bel[c]=0;
+ /* a little bleeds through the stairwell, so change of floor is thinkable */
+ for(const s of STAIRS){
+  for(let z=0;z<NF;z++){
+   const v=bel[bix(z,s[0],s[1])];
+   if(v>.004){bel[bix(1-z,s[0],s[1])]+=v*.22;bel[bix(z,s[0],s[1])]-=v*.22}
+  }
+ }
+ norm();
+}
+function beliefSpots(n=4){
+ const arr=[];
+ for(let z=0;z<NF;z++)for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){
+  let s=0;
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)s+=bel[bix(z,x+dx,y+dy)];
+  if(s<=0||!npass(x,y,z))continue;
+  let pen=1;
+  for(const c of N.cleared)if(c.z===z&&dist(x+.5,y+.5,c[0],c[1])<2.6){pen=.22;break}
+  const travel=dist(N.x,N.y,x+.5,y+.5)/8+(z!==N.z?2.2:0);
+  const sc=s*pen/(1+travel*.25);
+  arr.push({x:x+.5,y:y+.5,z,sc});
+ }
+ arr.sort((a,b)=>b.sc-a.sc);
+ const out=[];
+ for(const a of arr){
+  if(out.some(o=>o.z===a.z&&dist(o.x,o.y,a.x,a.y)<3))continue;
+  out.push(a);
+  if(out.length>=n)break;
+ }
+ return out;
+}
+function bestBelief(){const b=beliefSpots(1)[0];return b?[b.x,b.y,b.z]:null}
+function roomSweepPoints(x,y,z){
+ const r=roomByName(roomOf(x,y,z));
+ const pts=[];
+ if(r){
+  for(const fx of [.2,.5,.8])for(const fy of [.2,.5,.8]){
+   const q=nearestStandable(r.x0+(r.x1-r.x0)*fx,r.y0+(r.y1-r.y0)*fy,z);
+   if(q&&!pts.some(p=>dist(p[0],p[1],q[0]+.5,q[1]+.5)<1.8))pts.push([q[0]+.5,q[1]+.5,z]);
+  }
+ }
+ pts.sort((a,b)=>dist(N.x,N.y,a[0],a[1])-dist(N.x,N.y,b[0],b[1]));
+ return pts.slice(0,4);
+}
+function searchNext(){
+ if(N.searchT>30||(N.mass||0)<.02){N.mode='idle';run('calm_down',{},1);return}
+ const spots=beliefSpots(6);
+ let b=null;
+ for(const s of spots){
+  if(s.z===N.z){
+   const q=nearestFree(s.x,s.y,s.z);
+   if(!npass(q[0],q[1],s.z))continue;
+   const p=findPath(N.x,N.y,s.x,s.y,N.z);
+   if(p.length||dist(N.x,N.y,s.x,s.y)<2.5){b=s;break}
+  }else if(!b)b=s;
+ }
+ if(!b){N.mode='idle';run('calm_down',{},1);return}
+ N.cleared.push([b.x,b.y,b.z]);if(N.cleared.length>8)N.cleared.shift();
+ let name='search_belief';
+ const rm=roomOf(b.x,b.y,b.z);
+ if(N.searchN++===0)name='search_predicted';
+ const known=HIDES.filter(h=>h.z===b.z&&(MEM.hides[h.id]||0)>0)
+   .sort((p,q)=>dist(b.x,b.y,p.x,p.y)-dist(b.x,b.y,q.x,q.y))[0];
+ if(known&&dist(b.x,b.y,known.x+.5,known.y+.5)<2.8){
+  const q=inspectSpot(known.x,known.y,N.x,N.y,known.z,false);
+  run('search_closet',{x:q[0],y:q[1],z:known.z},3);
+  N.cleared.push([known.x+.5,known.y+.5,known.z]);
+  return;
+ }
+ if(rm==='Yard')name='search_yard';
+ else if(rm==='Roof')name='search_scan';
+ else if(rm==='Bedroom'&&dist(b.x,b.y,20.5,19.5)<4){name='search_closet';const q=inspectSpot(20,18,N.x,N.y,b.z,false);b={x:q[0],y:q[1],z:b.z}}
+ else if(rm==='Bedroom'&&dist(b.x,b.y,15.5,27.5)<4){name='search_bed';const q=inspectSpot(15,27,N.x,N.y,b.z,false);b={x:q[0],y:q[1],z:b.z}}
+ else if(rm==='Bathroom'&&dist(b.x,b.y,37.5,20.5)<3.5){name='search_tub';const q=inspectSpot(37,20,N.x,N.y,b.z,false);b={x:q[0],y:q[1],z:b.z}}
+ else if(N.searchN%4===0)name='search_scan';
+ else if(N.searchN%2===0)name='search_room';
+ if(name==='search_room'){
+  const pts=roomSweepPoints(b.x,b.y,b.z);
+  if(pts.length>1){run('search_sweep',{pts},3);return}
+ }
+ run(name,{x:b.x,y:b.y,z:b.z},3);
+}
+
+/* ----------------------------------------------------------- chase
+   While he can see you he uses your real position. The moment sight or
+   line-of-sight breaks he switches to the belief map: no wallhacks, no
+   knowledge of where you actually are, no contradictory steering. */
+function startChase(){
+ if(N.mode==='chase')return;
+ N.mode='chase';N.st='chase';N.prio=4;N.script=[];N.path=[];N.pathGoal=null;
+ N.chaseT=0;N.lost=0;N.sleeping=0;N.label='GOTCHA!';N.throwCd=Math.min(N.throwCd,1.5);
+ N.chaseGoal=null;N.chaseGoalT=-9;
+ addHeat(P.x,P.y,P.z,2);MEM.hours[hour|0]=(MEM.hours[hour|0]||0)+1;markMem();
+ say('He spotted you! RUN!',2);
+}
+function loseChase(){
+ N.mode='search';N.searchT=0;N.searchN=0;N.cleared=[];N.focus=null;
+ seedBelief();
+ const t=N.lastSeen||{x:N.x,y:N.y,z:N.z};
+ run('lost_player',{x:t.x,y:t.y,z:t.z},3);
+}
+function nThrow(){
+ const k=N.carry||'box';
+ const T0=Math.max(.25,N.dist/11);
+ const px=P.x+P.vx*T0,py=P.y+P.vy*T0;
+ const dx=px-N.x,dy=py-N.y,l=Math.hypot(dx,dy)||1;
+ PR.push({k,x:N.x,y:N.y,z:1.5,zf:N.z,vx:dx/T0,vy:dy/T0,vz:(0-1.5+.5*12*T0*T0)/T0,own:'n',t:0});
+}
+/* A real cut-off: while he can see you, look along your route to the thing
+   you are after and take a point that is nearer to him than to you. Same
+   floor only — he cannot cut through a ceiling. */
+function chaseCutoff(){
+ const g=playerGoal();
+ if(g.z!==P.z)return null;
+ const route=findPath(P.x,P.y,g.x,g.y,P.z);
+ let walked=0,px=P.x,py=P.y;
+ for(const q of route){
+  walked+=dist(px,py,q[0],q[1]);px=q[0];py=q[1];
+  if(walked<1.5)continue;
+  const nd=dist(N.x,N.y,q[0],q[1]),pd=dist(P.x,P.y,q[0],q[1]);
+  if(nd<pd-1.5&&nd<14&&clearLine(N.x,N.y,q[0],q[1],P.z))return{x:q[0],y:q[1],z:P.z};
+ }
+ return null;
+}
+function chaseTarget(){
+ if(N.checkHide)return{x:N.checkHide.x+.5,y:N.checkHide.y+.5,z:N.checkHide.z};
+ if(N.sees)return{x:P.x+P.vx*.35,y:P.y+P.vy*.35,z:P.z};
+ const ls=N.lastSeen;
+ /* just lost him: stay on the floor where you saw him, do not stampede
+    downstairs after the objective */
+ if(ls&&N.lost<2.5){
+  const t=Math.min(N.lost+.6,3.2);
+  return{x:ls.x+N.pvel.x*t,y:ls.y+N.pvel.y*t,z:ls.z==null?N.z:ls.z};
+ }
+ const b=bestBelief();
+ if(b)return{x:b[0],y:b[1],z:b[2]};
+ if(ls){
+  const t=Math.min(N.lost+.6,3.2);
+  return{x:ls.x+N.pvel.x*t,y:ls.y+N.pvel.y*t,z:ls.z==null?N.z:ls.z};
+ }
+ return null;
+}
+function chaseUpdate(dt){
+ N.chaseT+=dt;
+ const same=P.z===N.z;
+ const d=same?dist(N.x,N.y,P.x,P.y):99;
+ const sp=4.2+MEM.catches*.25+Math.min(.8,N.chaseT*.05)+(d>9?.8:0);
+ N.goal=playerGoal();
+ if(N.windup>0&&same){
+  N.windup-=dt;N.st='chase_throw';N.label='winds up…';
+  turn(Math.atan2(P.y-N.y,P.x-N.x),dt,12);
+  if(N.windup<=0)nThrow();
+  return;
+ }
+ if(N.sees&&same){
+  N.lost=0;N.lastSeen={x:P.x,y:P.y,z:P.z};N.throwCd-=dt;
+  /* keep the belief map warm while he can see you, so the moment sight
+     breaks it is already centred on your last known position */
+  if(!N.belT||tm-N.belT>.4){bel.fill(0);stamp(P.z,P.x,P.y,1);norm();N.belT=tm}
+  const a=Math.atan2(P.y-N.y,P.x-N.x),walk=clearLine(N.x,N.y,P.x,P.y,N.z);
+  if(d<2.6&&walk){
+   N.st='lunge';N.label='LUNGE!';
+   mvc(N,Math.cos(a)*sp*1.25*dt,Math.sin(a)*sp*1.25*dt,.3,(x,y)=>npass(x,y,N.z));
+   turn(a,dt,14);N.path=[];
+  }else if(N.throwCd<=0&&d>3.5&&d<11&&los(N.x,N.y,P.x,P.y,N.z)){
+   N.windup=.4;N.throwCd=Math.max(1.8,3.6-MEM.catches*.3);
+   N.carry=Math.random()<.5?'tomato':'box';N.path=[];
+   N.st='chase_throw';
+  }else if((N.chaseMode==='direct'?d<7.6:d<6.2)&&walk){
+   N.chaseMode='direct';N.st='chase';N.label='get back here!';
+   mvc(N,Math.cos(a)*sp*dt,Math.sin(a)*sp*dt,.3,(x,y)=>npass(x,y,N.z));
+   turn(a,dt,12);N.path=[];N.chaseGoal=null;
+  }else{
+   N.chaseMode='path';
+   N.st=walk?'chase_cutoff':'chase_route';
+   N.label=walk?'cutting you off':'going around!';
+   N.bt-=dt;
+   let tgt=null;
+   if(N.bt<=0){
+    N.bt=.28;
+    tgt=(d>7?chaseCutoff():null)||chaseTarget();
+   }else if(!N.chaseGoal)tgt=chaseTarget();
+   if(tgt&&(!N.chaseGoal||N.chaseGoal.z!==tgt.z||dist(N.chaseGoal.x,N.chaseGoal.y,tgt.x,tgt.y)>1.6)){
+    N.chaseGoal=tgt;
+   }
+   if(N.chaseGoal){
+    const r=walkTo(N.chaseGoal.x,N.chaseGoal.y,N.chaseGoal.z,dt,sp);
+    if(r==='fail'){N.chaseGoal=null;N.path=[]}
+   }
+  }
+ }else{
+  N.lost+=dt;N.st='chase_cutoff';N.label='where did he go?';N.bt-=dt;
+  if(!N.lastSeen)N.lastSeen={x:N.x,y:N.y,z:N.z};
+  if(!N.mass||N.mass<1e-6)seedBelief();
+  if(N.bt<=0){N.bt=.45;diffuse()}
+  const tgt=chaseTarget();
+  if(tgt&&(N.lost<.6||dist(tgt.x,tgt.y,N.x,N.y)>0.6)){
+   const r=walkTo(tgt.x,tgt.y,tgt.z,dt,sp);
+   if(r==='fail'){N.path=[];N.bt=0}
+  }else follow(dt,sp,N.z);
+  if(N.lost>5.5){loseChase();return}
+ }
+ if(!P.hide&&same&&d<.8)caught();
+}
+
+/* ---------------------------------------------------- projectiles & items */
+function throwHeld(){
+ const i=held();
+ if(!i||state!=='play'||P.hide)return;
+ P.inv[P.sel]=null;
+ i.fly=1;
+ P.throwO={x:P.x,y:P.y,z:P.z,t:tm};
+ const a=P.aim;
+ PR.push({k:i.k,item:i,x:P.x+Math.cos(a)*.5,y:P.y+Math.sin(a)*.5,z:1.1,zf:P.z,vx:Math.cos(a)*11,vy:Math.sin(a)*11,vz:4.2,own:'p',t:0});
+}
+function land(p,x,y){
+ const i=p.item;
+ if(p.k==='tomato'){
+  SPL.push({x,y,z:p.zf,k:'splat'});
+  if(p.own==='p')noise(x,y,p.zf,8,'impact',P.throwO?P.throwO.x:x,P.throwO?P.throwO.y:y);
+ }else if(p.k==='vase'){
+  SPL.push({x,y,z:p.zf,k:'shards'});
+  if(p.own==='p')noise(x,y,p.zf,12,'impact',P.throwO?P.throwO.x:x,P.throwO?P.throwO.y:y);
+ }else{
+  let it=i;
+  if(!it){it={k:p.k,x,y,z:p.zf,hx:x,hy:y,fly:0,vx:0,vy:0,vz:0};ITEMS.push(it)}
+  it.x=x;it.y=y;it.fly=0;it.z=0;
+  if(p.own==='p')noise(x,y,p.zf,p.k==='can'?10:11,'impact',P.throwO?P.throwO.x:x,P.throwO?P.throwO.y:y);
+ }
+}
+function updPR(dt){
+ for(const p of PR){
+  p.t+=dt;if(p.dead)continue;
+  const nx=p.x+p.vx*dt,ny=p.y+p.vy*dt;
+  p.vz-=12*dt;p.z+=p.vz*dt;
+  const c=T(nx,ny,p.zf);
+  if(c==='W'){
+   FG[p.zf][ny|0][nx|0]='w';markReach();
+   noise(nx,ny,p.zf,16,'glass',P.throwO?P.throwO.x:nx,P.throwO?P.throwO.y:ny);
+   say('CRASH! Glass breaks.',1.5);p.dead=1;land(p,p.x,p.y);continue;
+  }
+  if(c==='#'||c==='S'||c==='F'||c==='X'||c==='L'||c==='B'||(c==='T'&&p.z<.6)||(c==='D'&&doorClosed(nx|0,ny|0,p.zf))){
+   p.dead=1;land(p,p.x,p.y);continue;
+  }
+  if(p.own==='p'&&p.zf===N.z&&dist(nx,ny,N.x,N.y)<.55&&p.z<1.9){
+   p.dead=1;
+   if(p.k==='tomato'||p.k==='vase')SPL.push({x:nx,y:ny,z:p.zf,k:p.k==='vase'?'shards':'splat'});
+   else land(p,nx,ny);
+   N.stun=1.5;N.al=1;N.sleeping=0;N.lastSeen={x:P.x,y:P.y,z:P.z};
+   run('wipe_face',{},2);say('Direct hit!',1.2);N.prio=2;noise(nx,ny,p.zf,6,'hit');
+   if(N.mode!=='chase'&&canSee(N.x,N.y,P.x,P.y,N.z))startChase();
+   continue;
+  }
+  if(p.own==='n'&&p.zf===P.z&&dist(nx,ny,P.x,P.y)<.5&&p.z<1.8){
+   p.dead=1;P.slow=1.8;say('He hit you with a '+p.k+'!',2);
+   if(p.k==='tomato')SPL.push({x:nx,y:ny,z:p.zf,k:'splat'});else land(p,nx,ny);
+   continue;
+  }
+  p.x=nx;p.y=ny;
+  if(p.z<=0){p.dead=1;land(p,p.x,p.y)}
+ }
+ for(let i=PR.length-1;i>=0;i--)if(PR[i].dead&&PR[i].t>.05)PR.splice(i,1);
+}
+/* one flood fill per floor, refreshed when the map changes: cheap and
+   exact enough to keep traps and cameras somewhere a person can reach */
+const REACH=[null,null];
+let reachRev=-1;
+function markReach(){mapRev++}
+function floodReach(z,sx,sy){
+ const seen=new Uint8Array(W*H);
+ if(!npass(sx,sy,z))return seen;
+ seen[sy*W+sx]=1;
+ const q=[[sx,sy]];
+ while(q.length){
+  const a=q.pop();
+  for(const d of NB){
+   const nx=a[0]+d[0],ny=a[1]+d[1];
+   if(nx<1||ny<1||nx>=W-1||ny>=H-1)continue;
+   const i=ny*W+nx;
+   if(seen[i]||!npass(nx,ny,z))continue;
+   seen[i]=1;q.push([nx,ny]);
+  }
+ }
+ return seen;
+}
+function ensureReach(){
+ if(reachRev===mapRev&&REACH[0]&&REACH[1])return;
+ REACH[0]=floodReach(0,28,25);
+ REACH[1]=floodReach(1,31,27);
+ reachRev=mapRev;
+}
+const reachable=(x,y,z)=>{ensureReach();return !!(REACH[z]&&REACH[z][(y|0)*W+(x|0)])};
+function camValid(x,y,z){
+ x|=0;y|=0;
+ if(z!==0&&z!==1)return 0;
+ if(T(x,y,z)!=='.')return 0;
+ const rm=roomOf(x,y,z);
+ if(rm==='Yard'||rm==='Roof'||rm==='Vault'||rm==='Shed')return 0;
+ if(!reachable(x,y,z))return 0;
+ let wall=0;
+ for(const d of NB)if(T(x+d[0],y+d[1],z)==='#')wall++;
+ if(!wall)return 0;
+ for(const d of NB){const q=T(x+d[0],y+d[1],z);if(q==='D'||q==='L'||q==='B'||q==='U'||q==='V')return 0}
+ if(CAMS.some(c=>c.z===z&&dist(x,y,c.x,c.y)<3))return 0;
+ return 1;
+}
+function camNearby(x,y,z){
+ for(let r=0;r<=4;r++){
+  const c=[];
+  for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+   if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+   const nx=x+dx,ny=y+dy;
+   if(camValid(nx,ny,z))c.push({x:nx,y:ny,d:dist(x,y,nx,ny)+Math.random()*.4});
+  }
+  c.sort((a,b)=>a.d-b.d);
+  if(c.length)return c[0];
+ }
+ return null;
+}
+
+/* A trap only goes somewhere a person could actually walk into it:
+   open floor with clearance, at least two ways past, away from doors,
+   stairs, windows, hiding places and other traps, and on a floor he can
+   reach. Everything else is refused. */
+function trapValid(x,y,z){
+ x|=0;y|=0;
+ if(z!==0&&z!==1)return 0;
+ const c=T(x,y,z);
+ if(c!=='.'&&c!==',')return 0;
+ if(!standableCell(x,y,z,.28))return 0;
+ let openN=0;
+ for(const d of NB)if(npass(x+d[0],y+d[1],z))openN++;
+ if(openN<3)return 0;
+ for(const d of NB){
+  const q=T(x+d[0],y+d[1],z);
+  if(q==='D'||q==='L'||q==='B'||q==='U'||q==='V'||q==='W'||q==='w')return 0;
+ }
+ const rm=roomOf(x,y,z);
+ if(rm==='Vault'||rm==='Shed')return 0;
+ if(dist(x+.5,y+.5,28.5,37.5)<3&&z===0)return 0;
+ for(const h of HIDES)if(h.z===z&&dist(x+.5,y+.5,h.x+.5,h.y+.5)<1.6)return 0;
+ for(const t of TRAPS)if(t.z===z&&!(t.x===x&&t.y===y)&&dist(x,y,t.x,t.y)<2)return 0;
+ if(!reachable(x,y,z))return 0;
+ return 1;
+}
+function bestTrapNear(x,y,z,maxR=3){
+ x|=0;y|=0;
+ for(let r=0;r<=maxR;r++){
+  const c=[];
+  for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+   if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+   const nx=x+dx,ny=y+dy;
+   if(trapValid(nx,ny,z))c.push({x:nx,y:ny,d:dist(x,y,nx,ny)+Math.random()*.3});
+  }
+  c.sort((a,b)=>a.d-b.d);
+  if(c.length)return c[0];
+ }
+ return null;
+}
+function updTraps(){
+ for(const t of TRAPS){
+  if(!t.armed||P.z!==t.z)continue;
+  if(dist(P.x,P.y,t.x+.5,t.y+.5)<.5){
+   t.armed=0;P.trap=2.4;noise(P.x,P.y,P.z,20,'trap');
+   say('BEAR TRAP! He heard that.',2.5);
+  }
+ }
+}
+
+/* ------------------------------------------------------------ player */
+function findTarget(){
+ let b=null,bd=1.6;
+ if(P.hide)return{k:'unhide',t:0,l:'Step out of '+P.hide.label+' (E)'};
+ const invFree=P.inv.indexOf(null)>=0;
+ const st=stairsHere();
+ if(st)return{k:'stair',t:0,l:(P.z?'Go downstairs':'Go upstairs')+' (E)'};
+ /* hiding places */
+ for(const h of HIDES){
+  if(h.z!==P.z)continue;
+  const d=dist(P.x,P.y,h.x+.5,h.y+.5);
+  if(d<bd){bd=d;b={k:'hide',o:h,t:0,l:'Hide in '+h.label+' (E)'}}
+ }
+ for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+  const x=(P.x|0)+dx,y=(P.y|0)+dy,c=T(x,y,P.z);
+  if(c==='L'&&hasKey('pick')){const d=dist(P.x,P.y,x+.5,y+.5);if(d<bd){bd=d;b={k:'lock',x,y,t:2,l:'Pick the lock (hold E)'}}}
+  if(c==='B'&&hasKey('red')&&hasKey('blue')){const d=dist(P.x,P.y,x+.5,y+.5);if(d<bd){bd=d;b={k:'lock',x,y,t:2.2,l:'Unlock the basement (hold E)'}}}
+ }
+ for(const c of CT){
+  if(c.done||c.z!==P.z)continue;
+  const d=dist(P.x,P.y,c.x,c.y);
+  if(d<bd){bd=d;b={k:'ct',o:c,t:c.t,l:'Search the '+c.name+' (hold E)'}}
+ }
+ if(invFree)for(const p of PLOTS){
+  if(p.n<=0||P.z!==0)continue;
+  const d=dist(P.x,P.y,p.x+.5,p.y+.5);
+  if(d<bd){bd=d;b={k:'plant',o:p,t:.35,l:'Pick a tomato (hold E)'}}
+ }
+ for(const t of TRAPS){
+  if(t.z!==P.z)continue;
+  const d=dist(P.x,P.y,t.x+.5,t.y+.5);
+  if(d<bd&&t.armed){bd=d;b={k:'trap',o:t,t:.9,l:'Disarm the trap (hold E)'}}
+ }
+ if(invFree)for(const i of ITEMS){
+  if(i.fly||i.x<0||invHas(i)||i.z!==P.z)continue;
+  const d=dist(P.x,P.y,i.x,i.y);
+  if(d<bd){bd=d;b={k:'item',o:i,t:0,l:'E: pick up the '+i.k}}
+ }
+ return b;
+}
+function doTarget(t){
+ if(t.k==='lock'){
+  FG[P.z][t.y][t.x]='D';
+  say('Unlocked!');
+  noise(P.x,P.y,P.z,t.t>2?9:7,'pick');
+  if(t.x===28&&t.y===30&&P.z===0)MEM.front=0;
+ }else if(t.k==='ct'){
+  t.o.done=1;t.o.seen=0;
+  P.keys[t.o.give]=1;
+  say('Found the '+KEYNAMES[t.o.give].toUpperCase()+' — it goes on your keyring.',3);
+  noise(P.x,P.y,P.z,5,'rummage');
+  addHeat(P.x,P.y,P.z,1);
+ }else if(t.k==='plant'){
+  if(P.inv.indexOf(null)<0){say('Inventory full! Press Q to drop something.',2);return}
+  t.o.n--;
+  const s=invAdd({k:'tomato',x:-9,y:-9,z:P.z,fly:0});
+  if(s<0)return;
+  P.sel=s;say('Tomato in slot '+(s+1)+'! Click to throw it at a window.',2);
+ }else if(t.k==='trap'){
+  t.o.armed=0;
+  const i=TRAPS.indexOf(t.o);if(i>=0)TRAPS.splice(i,1);
+  const k=cellKey(t.o.z,t.o.x,t.o.y);
+  MEM.traps=MEM.traps.filter(q=>q!==k);save();
+  say('Trap disarmed.',1.5);
+ }else if(t.k==='item'){
+  const s=invAdd(t.o);
+  if(s<0){say('Inventory full! Press Q to drop something.',2);return}
+  t.o.x=-9;t.o.y=-9;P.sel=s;
+  say('Picked up the '+t.o.k+' (slot '+(s+1)+').',1.5);
+ }else if(t.k==='stair'){
+  useStairs();
+ }else if(t.k==='hide'){
+  if(N.sees&&N.mode!=='chase'){say('He can see you — wait until he looks away.',2);return}
+  if(N.sees){say('He saw you. Too late to hide.',2);return}
+  P.hide=t.o;P.vx=P.vy=0;P.tgt=null;
+  if(N.mode==='search'||N.mode==='chase'){
+   /* he clocked the movement: the spot goes on his list */
+   N.checkHide=t.o;
+  }
+  say('You slip into '+t.o.label+'. Hold still.',2);
+ }else if(t.k==='unhide'){
+  P.hide=null;say('You step back out.',1.2);
+ }
+}
+function stairsHere(){
+ const c=T(P.x|0,P.y|0,P.z);
+ return c==='U'||c==='V';
+}
+function useStairs(){
+ if(P.stairT>0)return;
+ const c=T(P.x|0,P.y|0,P.z);
+ if(c!=='U'&&c!=='V')return;
+ const to=c==='U'?1:0;
+ const seen=N.sees;
+ P.z=to;P.stairT=.6;P.lastCell=cellKey(P.z,P.x|0,P.y|0);
+ if(seen){
+  N.lastSeen={x:P.x,y:P.y,z:P.z};
+  stamp(P.z,P.x,P.y,1.4);
+  if(N.mode==='chase'){N.chaseGoal={x:P.x,y:P.y,z:P.z};N.bt=0}
+ }
+ noise(P.x,P.y,P.z,5,'step');
+ say(to?'Upstairs. Mind the floorboards.':'Downstairs.',1.3);
+}
+function playerUpdate(dt){
+ if(P.stairT>0)P.stairT-=dt;
+ P.crouch=K.c?1:0;P.sprint=K.shift&&!P.crouch&&!P.hide?1:0;
+ if(P.hide){
+  P.vx=P.vy=0;P.tgt=findTarget();
+  return;
+ }
+ const ix=((K.d||K.arrowright)?1:0)-((K.a||K.arrowleft)?1:0);
+ const iy=((K.s||K.arrowdown)?1:0)-((K.w||K.arrowup)?1:0);
+ const l=Math.hypot(ix,iy);
+ const sp=(P.crouch?1.7:P.sprint?5.4:3.3)*(P.slow>0?.45:1);
+ if(P.slow>0)P.slow-=dt;
+ P.vx=P.vy=0;
+ if(P.trap>0)P.trap-=dt;
+ else if(l){
+  P.vx=ix/l*sp;P.vy=iy/l*sp;
+  const px=P.x,py=P.y;
+  mvc(P,P.vx*dt,P.vy*dt,.34,(x,y)=>ppass(x,y,P.z));
+  if(Math.hypot(P.x-px,P.y-py)>sp*dt*.15){
+   P.ft-=dt;
+   if(P.ft<=0){P.ft=.36;noise(P.x,P.y,P.z,P.crouch?1.6:P.sprint?10:5,'step')}
+  }
+ }
+ P.aim=Math.atan2((mouse.y-innerHeight/2)/ZOOM+cam.y-P.y,(mouse.x-innerWidth/2)/ZOOM+cam.x-P.x);
+ if(!ppass(P.x,P.y,P.z)||!circFree(P.x,P.y,P.z,.33))unstickEntity(P,ppass,.33);
+ /* walking onto a stair tile changes floor once per entry */
+ const c=T(P.x|0,P.y|0,P.z);
+ const hereKey=cellKey(P.z,P.x|0,P.y|0);
+ if((c==='U'||c==='V')&&P.stairT<=0&&P.lastCell!==hereKey)useStairs();
+ const fresh=hereKey!==P.lastCell;
+ P.lastCell=cellKey(P.z,P.x|0,P.y|0);
+ if(c==='w'&&fresh){
+  const k=hereKey;
+  MEM.entries[k]=(MEM.entries[k]||0)+1;
+  addHeat(P.x,P.y,P.z,2);
+  if(!MEM.boarded.includes(k)&&!MEM.plans.some(p=>p.t==='board'&&p.x===(P.x|0)&&p.y===(P.y|0)&&p.z===P.z))MEM.plans.push({t:'board',x:P.x|0,y:P.y|0,z:P.z});
+  if(MEM.entries[k]>=2&&!MEM.traps.includes(k)&&!MEM.plans.some(p=>p.t==='trap'&&p.x===(P.x|0)&&p.y===(P.y|0)&&p.z===P.z)){
+   const tp=bestTrapNear(P.x|0,P.y|0,P.z,2);
+   if(tp)MEM.plans.push({t:'trap',x:tp.x,y:tp.y,z:P.z});
+  }
+  save();
+ }
+ if(c==='D'&&P.x>27.6&&P.x<28.4&&P.y>29.6&&P.y<30.4&&P.z===0){
+  const k=cellKey(0,28,30);
+  if(tm-frontT>5){MEM.entries[k]=(MEM.entries[k]||0)+1;frontT=tm;addHeat(P.x,P.y,0,1);markMem()}
+ }
+ P.lastCell=cellKey(P.z,P.x|0,P.y|0);
+ MEM.rooms[roomOf(P.x,P.y,P.z)]=(MEM.rooms[roomOf(P.x,P.y,P.z)]||0)+(N.sees?dt:0);
+ if(N.sees)markMem();
+ P.tgt=findTarget();
+ if(P.tgt&&P.tgt.t>0&&K.e){
+  P.hold+=dt;
+  if(P.hold>=P.tgt.t){doTarget(P.tgt);P.hold=0}
+ }else P.hold=0;
+ updTraps();
+ if(P.z===SECRET.z&&!SECRET.got&&dist(P.x,P.y,SECRET.x,SECRET.y)<1.15){SECRET.got=1;win()}
+}
+
+/* ------------------------------------------------------- doors, cameras */
+function updDoors(dt){
+ for(const d of DR){
+  const ch=FG[d.z][d.y][d.x];
+  if(ch==='L'||ch==='B'){d.o=0;continue}
+  if(d.z!==P.z&&d.z!==N.z){d.t=0;d.o+=((0)-d.o)*Math.min(1,dt*7);continue}
+  if(d.hold>0)d.hold-=dt;
+  const nearP=P.z===d.z&&dist(P.x,P.y,d.x+.5,d.y+.5)<1.3&&ppass(d.x,d.y,d.z);
+  const nearN=N.z===d.z&&dist(N.x,N.y,d.x+.5,d.y+.5)<1.5;
+  if(nearP||(nearN&&!(d.hold>0))){
+   if(d.o<.35&&nearP&&!nearN&&Math.random()<.5)noise(d.x+.5,d.y+.5,d.z,P.crouch?2:4,'door');
+   d.t=1.6;
+  }else d.t-=dt;
+  d.o+=((d.t>0?1:0)-d.o)*Math.min(1,dt*7);
+ }
+}
+const CAMR=6.5,CAMCONE=.7;
+function losCam(ax,ay,bx,by,z){
+ const d=Math.hypot(bx-ax,by-ay),n=Math.ceil(d/.2);
+ for(let i=1;i<n;i++){
+  const x=ax+(bx-ax)*i/n,y=ay+(by-ay)*i/n,c=T(x,y,z);
+  if(c==='#'||c==='S'||c==='X'||c==='L'||c==='B'||c==='T'||c==='W'||(c==='D'&&doorClosed(x|0,y|0,z)))return 0;
+ }
+ return 1;
+}
+function updCams(dt){
+ for(const c of CAMS){
+  c.a+=dt*.7;c.cd-=dt;
+  if(c.z!==P.z||P.hide){c.sees=0;continue}
+  const d=dist(c.x,c.y,P.x,P.y);
+  let see=0;
+  if(d<CAMR){
+   const ang=Math.atan2(P.y-c.y,P.x-c.x);
+   const df=Math.abs(Math.atan2(Math.sin(ang-c.a),Math.cos(ang-c.a)));
+   if(df<CAMCONE&&losCam(c.x,c.y,P.x,P.y,c.z))see=1;
+  }
+  c.sees=see;
+  if(see){
+   c.seeT+=dt;
+   if(c.seeT>1.2&&c.cd<=0){c.cd=5;noise(P.x,P.y,P.z,12,'camera');say('A camera spotted you!',2)}
+  }else c.seeT=Math.max(0,c.seeT-dt);
+ }
+}
+
+/* -------------------------------------------------------- neighbour brain */
+function stationFor(type,z){
+ const L=ST[type];
+ if(!L)return null;
+ let b=null,bd=1e9;
+ for(const s of L){
+  const d=dist(N.x,N.y,s[0],s[1])+(s[2]!==z?8:0)+Math.random()*2.5-heatAt(s[0],s[1],s[2])*.15;
+  if(d<bd){bd=d;b=s}
+ }
+ return b;
+}
+function hotRoomSpot(){
+ let best=null,bs=-1;
+ for(const r of ROOMS){
+  if(r.n==='Vault')continue;
+  const sc=(MEM.rooms[r.n]||0)*.35+roomHeat(r.n)*.55+Math.random()*.5+.08+(r.z!==N.z?0:0);
+  if(sc>bs){bs=sc;best=r}
+ }
+ if(!best)return null;
+ const q=nearestStandable((best.x0+best.x1)/2,(best.y0+best.y1)/2,best.z);
+ if(!q)return null;
+ return{x:q[0]+.5,y:q[1]+.5,z:best.z,t:2.4,label:'checking the '+best.n};
+}
+function entrySpot(){
+ const arr=Object.entries(MEM.entries).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
+ for(const e of arr){
+  const[z,x,y]=parseCell(e[0]);
+  if(T(x,y,z)==='X')continue;
+  const s=inspectSpot(x,y,N.x,N.y,z,true);
+  return{x:s[0],y:s[1],z,fx:x+.5,fy:y+.5};
+ }
+ return null;
+}
+function guardObjective(){
+ const seen=CT.filter(c=>c.seen).map(c=>c.id);
+ if(seen.length>=2||(hasKey('red')&&hasKey('blue')))return{n:'guard_basement',p:{}};
+ if(seen.includes('fridge')){
+  const s=inspectSpot(37,10,N.x,N.y,0,false);
+  return{n:'guard_obj',p:{x:s[0],y:s[1],z:0,label:'watching the study',t:9}};
+ }
+ if(seen.includes('odesk')){
+  const s=inspectSpot(37,10,N.x,N.y,1,false);
+  return{n:'guard_obj',p:{x:s[0],y:s[1],z:1,label:'watching the office',t:9}};
+ }
+ if(seen.includes('toolbox')){
+  const s=inspectSpot(32,9,N.x,N.y,0,false);
+  return{n:'guard_obj',p:{x:s[0],y:s[1],z:0,label:'watching the kitchen',t:9}};
+ }
+ return null;
+}
+function pickTask(){
+ if(state!=='play')return;
+ /* planned fortifications first */
+ if(MEM.plans.length){
+  let plan=null;
+  while(MEM.plans.length&&!plan){
+   const p=MEM.plans.shift();
+   if(p.t==='board'&&T(p.x|0,p.y|0,p.z|0)==='X')continue;
+   if(p.t==='trap'&&!trapValid(p.x,p.y,p.z|0))continue;
+   plan=p;
+  }
+  save();
+  if(plan){
+   const z=plan.z|0;
+   if(plan.t==='board'){run('board_window',{x:plan.x|0,y:plan.y|0,z},1);return}
+   if(plan.t==='trap'){run('set_bear_trap',{x:plan.x|0,y:plan.y|0,z},1);return}
+   if(plan.t==='cam'){run('install_camera',{x:plan.x|0,y:plan.y|0,z},1);return}
+   if(plan.t==='lock'){run('lock_front',plan,1);return}
+  }
+ }
+ /* nearest broken window, any floor */
+ let bw=null,bd=1e9;
+ for(let z=0;z<NF;z++)for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++)if(FG[z][y][x]==='w'){
+  const d=dist(N.x,N.y,x+.5,y+.5)+(z!==N.z?6:0);if(d<bd){bd=d;bw={x,y,z}}
+ }
+ if(bw&&Math.random()<.92){run('repair_window',bw,1);return}
+ /* notice a looted container */
+ const unseen=CT.find(c=>c.done&&!c.seen);
+ if(unseen&&Math.random()<.7){
+  const s=inspectSpot(unseen.x,unseen.y,N.x,N.y,unseen.z,false);
+  run('inspect_container',{x:s[0],y:s[1],z:unseen.z,c:unseen},1);return;
+ }
+ /* clean the nearest mess */
+ let sp=null;bd=1e9;
+ for(const s of SPL){
+  if(s.claimed)continue;
+  const d=dist(N.x,N.y,s.x,s.y)+(s.z!==N.z?6:0);
+  if(d<bd){bd=d;sp=s}
+ }
+ if(sp&&Math.random()<.8){sp.claimed=1;run(sp.k==='splat'?'mop_splat':'pick_up_litter',{x:sp.x,y:sp.y,z:sp.z,s:sp},1);return}
+ /* put dropped items back */
+ let away=null;bd=1e9;
+ for(const i of ITEMS){
+  if(i.fly||invHas(i)||i.x<0||i.cl)continue;
+  const d=dist(i.x,i.y,i.hx,i.hy);
+  if(d>2.5&&d<bd){bd=d;away=i}
+ }
+ if(away&&Math.random()<.75){
+  away.cl=1;setTimeout(()=>away.cl=0,20000);
+  run('return_item',{i:away},1);return;
+ }
+ /* routine tasks */
+ const hr=hour%24,C=[];
+ for(const t of TASKS){
+  const s=stationFor(t.st,N.z);
+  if(!s)continue;
+  let sc=0;
+  for(const k in t.eff){const v=t.eff[k];sc+=v<0?N.need[k]*-v*2.2:-v*.3}
+  sc+=inWin(t,hr)?.9:(t.hrs?-.6:0);
+  sc-=dist(N.x,N.y,s[0],s[1])/55+(s[2]!==N.z?1.2:0);
+  if(N.recent.includes(t.name))sc-=1.3;
+  sc+=(MEM.rooms[roomOf(s[0],s[1],s[2])]||0)*.02;
+  sc+=Math.min(1.4,heatAt(s[0],s[1],s[2])*.12);
+  sc+=Math.random()*.4;
+  if(t.name==='sleep')sc+=(hr>=22||hr<6)?1.8:-3;
+  C.push({sc,t,s});
+ }
+ C.sort((a,b)=>b.sc-a.sc);
+ const top=C.slice(0,4);
+ let best=top.length?top[(Math.random()*Math.min(3,top.length))|0]:null;
+ /* Night is night: unless something needs doing, he is in bed. */
+ if(isNightNow()&&N.st!=='sleep'){
+  const sl=C.find(c=>c.t.name==='sleep');
+  if(sl&&(!N.sleepUntil||hour>=22||hour<6))best=sl;
+ }
+ /* special intentions */
+ const stolen=CT.filter(c=>c.seen).length;
+ const keys=keyCount();
+ const ex=[];
+ ex.push({sc:N.need.s*1.25+(hr>=21||hr<5?.2:0)+Math.random()*.2,n:'patrol_perimeter',p:{a:[6.5,20.5],b:[28.5,34.5]}});
+ ex.push({sc:N.need.s*.8+stolen*.5+keys*.25+MEM.catches*.1+Math.random()*.2,n:'guard_basement',p:{}});
+ const hr2=hotRoomSpot();
+ if(hr2)ex.push({sc:.22+N.need.s*.9+Math.random()*.25,n:'patrol_room',p:hr2});
+ if((MEM.rooms['Landing']||0)>2||(MEM.rooms['Home Office']||0)>2)
+  ex.push({sc:.3+Math.random()*.5,n:'patrol_upstairs',p:{x:28.5,y:24.5,z:1,t:2.2,label:'checking upstairs'}});
+ if(stolen){
+  const g=guardObjective();
+  if(g)ex.push({sc:.5+stolen*.45+N.need.s*.5+Math.random()*.2,n:g.n,p:g.p});
+ }
+ if(TRAPS.length){
+  const t=TRAPS[(Math.random()*TRAPS.length)|0];
+  const s=inspectSpot(t.x,t.y,N.x,N.y,t.z,false);
+  ex.push({sc:.15+N.need.s*.4+Math.random()*.2,n:'check_traps',p:{x:s[0],y:s[1],z:t.z}});
+ }
+ if(MEM.catches){
+  const e=entrySpot();
+  if(e)ex.push({sc:.35+Math.random()*.35,n:'ambush_door',p:e});
+ }
+ ex.sort((a,b)=>b.sc-a.sc);
+ const special=ex[0];
+ if(special&&special.sc>(best?best.sc:0)){run(special.n,special.p,0);return}
+ if(!best){run('grumble',{},0);return}
+ const t=best.t,d=rnd(t.a,t.b)*.5,s=best.s;
+ N.recent.push(t.name);if(N.recent.length>6)N.recent.shift();
+ const sl=t.name==='sleep';
+ const steps=[go(s[0],s[1],s[2])];
+ if(sl)steps.push(fn(()=>N.sleeping=1));
+ steps.push(wait(d,t.name.replace(/_/g,' ')+'…',{eff:t.eff,sweep:0}));
+ if(sl)steps.push(fn(()=>N.sleeping=0));
+ steps.push(fn(()=>{N.done++}));
+ N.st=t.name;N.script=steps;N.si=0;N.stepT=0;N.path=[];N.prio=0;
+ N.spd=2.2+MEM.catches*.1;N.mode='idle';
+}
+function aiUpdate(dt){
+ N.need.h=cl(N.need.h+dt*.004,0,1);
+ N.need.t=cl(N.need.t+dt*.005,0,1);
+ N.need.b=cl(N.need.b+dt*.006,0,1);
+ N.need.e=cl(N.need.e+dt*.0025*(N.sleeping?-3:1),0,1);
+ N.need.y=cl(N.need.y+dt*.002,0,1);
+ N.need.l=cl(N.need.l+dt*.004,0,1);
+ N.need.s=cl(N.need.s-dt*.004,0,1);
+ N.needT-=dt;
+ if(N.needT<=0){
+  N.needT=.5;
+  let br=0;
+  for(let z=0;z<NF;z++)for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++)if(FG[z][y][x]==='w')br++;
+  N.need.d=cl(SPL.length*.18+br*.35,0,1);
+ }
+ if(N.stun>0){N.stun-=dt;return}
+ N.unT-=dt;
+ if(N.unT<=0){N.unT=.25;forceUnstuck()}
+ percept(dt);
+ if(!N.pp)N.pp={x:P.x,y:P.y};
+ if(dt>0&&N.sees){
+  const k=Math.min(1,dt*6);
+  N.pvel.x+=(cl((P.x-N.pp.x)/dt,-7,7)-N.pvel.x)*k;
+  N.pvel.y+=(cl((P.y-N.pp.y)/dt,-7,7)-N.pvel.y)*k;
+ }else{
+  N.pvel.x*=.97;N.pvel.y*=.97;
+ }
+ N.pp.x=P.x;N.pp.y=P.y;
+ if(N.sees){
+  N.heatT+=dt;
+  if(N.heatT>=1){
+   N.heatT=0;addHeat(P.x,P.y,P.z,1);
+   MEM.hours[hour|0]=(MEM.hours[hour|0]||0)+1;markMem();
+  }
+ }
+ const d=N.dist||99;
+ if(N.sees){
+  N.al=Math.min(1,N.al+dt*(d<4?4:2.2)*(P.sprint?1.4:P.crouch?.6:1)/(N.sleeping?3:1));
+  N.lastSeen={x:P.x,y:P.y,z:P.z};
+ }else if(N.periph&&N.mode!=='chase')N.al=Math.min(1,N.al+dt*.8);
+ else N.al=Math.max(0,N.al-dt*.35);
+ if(N.mode!=='chase'){
+  if(N.al>=1&&N.sees)startChase();
+  else if(N.al>.35&&N.st!=='noticing'&&N.prio<2&&!N.sleeping){N.mode='idle';run('noticing',{},2)}
+ }
+ /* he remembers the hiding places you have used, and checks them */
+ if(P.hide&&N.z===P.z){
+  const h=P.hide;
+  const d2=dist(N.x,N.y,h.x+.5,h.y+.5);
+  if((N.checkHide===h&&d2<1.55)||(N.mode==='search'&&d2<1.55))caught('He found you in '+h.label+'.');
+ }
+ if(N.mode==='chase'){chaseUpdate(dt);return}
+ if(N.mode==='search'){
+  N.searchT+=dt;N.bt-=dt;
+  if(N.bt<=0){N.bt=.5;diffuse()}
+ }
+ if(N.sees&&N.mode==='search')N.al=Math.max(N.al,.4);
+ if(N.script.length)scriptUpdate(dt);
+ else pickTask();
+}
+
+/* ------------------------------------------------------- catch / retry / win
+   Every round starts from the same world: the only thing that carries
+   over is what he remembers, and NEW GAME throws even that away. */
+function learn(){
+ const n=[];
+ if(MEM.plans.some(p=>p.t==='board'))n.push('He will board up the windows you climb through.');
+ if(MEM.plans.some(p=>p.t==='trap'))n.push('He will set bear traps on your favourite routes.');
+ if(MEM.catches>=2&&MEM.cams.length===0&&!MEM.plans.some(p=>p.t==='cam')){
+  const hot=Object.entries(MEM.rooms).filter(e=>e[0]!=='Yard'&&e[0]!=='Roof').sort((a,b)=>b[1]-a[1])[0];
+  const r=roomByName(hot?hot[0]:'Foyer')||roomByName('Foyer');
+  MEM.plans.push({t:'cam',x:r.x0+.5,y:r.y0+.5,z:r.z});
+  n.push('He will mount a camera in the '+(hot?hot[0]:'Foyer')+'.');
+ }
+ if(MEM.catches>=3&&!MEM.front&&!MEM.plans.some(p=>p.t==='lock')){
+  MEM.plans.push({t:'lock',x:0,y:0,z:0});
+  n.push('He will change the front door lock.');
+ }
+ const hotRoom=Object.entries(MEM.rooms).filter(e=>e[0]!=='Yard'&&e[0]!=='Roof').sort((a,b)=>b[1]-a[1])[0];
+ if(hotRoom&&hotRoom[1]>4)n.push('He will patrol the '+hotRoom[0]+' more often.');
+ const hid=Object.entries(MEM.hides).sort((a,b)=>b[1]-a[1])[0];
+ if(hid&&hid[1]>0){const h=HIDES.find(q=>q.id===hid[0]);if(h)n.push('He will check '+h.label+' from now on.')}
+ if(hourAffinity()>.5)n.push('He expects you around '+String(hour|0).padStart(2,'0')+':00 now.');
+ n.push('He is faster and sees further now ('+MEM.catches+' catches).');
+ return n;
+}
+function caught(why){
+ if(state!=='play')return;
+ state='caught';
+ MEM.catches++;
+ const rm=roomOf(P.x,P.y,P.z);
+ MEM.rooms[rm]=(MEM.rooms[rm]||0)+5;
+ if(P.hide)MEM.hides[P.hide.id]=(MEM.hides[P.hide.id]||0)+1;
+ addHeat(P.x,P.y,P.z,3);
+ MEM.hours[hour|0]=(MEM.hours[hour|0]||0)+2;
+ const notes=learn();
+ save();
+ showOv('CAUGHT in the '+rm,
+  (why?'<div class=card>'+why+'</div>':'')+
+  '<div class=card>'+(notes.length?notes.map(n=>'▸ '+n).join('<br>'):'▸ He is learning how you move.')+'</div>',
+  [{t:'TRY AGAIN',fn:retry},{t:'NEW GAME — HE FORGETS',ghost:1,fn:newGame}]);
+}
+function resetRound(){
+ resetWorld();
+ resetPlayer();resetN();
+ hour=18;
+ frontT=-99;
+ state='play';
+ N.mode='idle';N.script=[];N.prio=0;N.focus=null;N.pathGoal=null;
+ hideOv();
+ pickTask();
+}
+function retry(){resetRound()}
+function win(){
+ state='win';MEM.wins=(MEM.wins||0)+1;save();
+ showOv('YOU STOLE THE SECRET!',
+  '<div class=card>You made it into the vault after '+MEM.catches+' catch'+(MEM.catches===1?'':'es')+'.</div>'+
+  '<div class=card>He remembers this route. Try it again and he will be waiting in the places you used.</div>',
+  [{t:'PLAY AGAIN',fn:retry},{t:'NEW GAME — HE FORGETS',ghost:1,fn:newGame}]);
+}
+function wipeMemory(){MEM=memBlank();save();memDirty=0}
+function newGame(){wipeMemory();resetRound();beginCutscene()}
+
+/* -------------------------------------------------------------- overlays */
+let OVBTNS=[];
+function showOv(title,html,btns){
+ const ov=$('ov');
+ ov.style.display='flex';
+ ov.querySelector('h1').textContent=title;
+ $('ovt').innerHTML=html;
+ const b=$('ovb');
+ b.innerHTML='';
+ OVBTNS=btns||[];
+ (btns||[]).forEach(x=>{
+  const el=document.createElement('button');
+  el.textContent=x.t;
+  if(x.ghost)el.className='ghost';
+  el.onclick=x.fn;
+  b.appendChild(el);
+ });
+}
+function hideOv(){$('ov').style.display='none'}
+
+const CUT=[
+ {h:'THE HOUSE',
+  t:'<div class=card>You have been watching the house across the street for a week. The neighbour keeps something in the vault behind the workshop, and he never leaves it unguarded for long.</div><div class=card>He has a routine. He has a memory. On the last attempt he learned which window you use.</div>'},
+ {h:'TONIGHT',
+  t:'<div class=card><b>1.</b> The <b>lockpick</b> is in the shed in the west yard.<br><b>2.</b> Pick the lock on the <b>upstairs office</b> and take the <b>blue key</b> from the desk.<br><b>3.</b> The <b>red key</b> is in the kitchen fridge.<br><b>4.</b> The basement door in the workshop needs both keys.</div><div class=card>Keys live on your keyring — they are never in your pockets, never dropped, never thrown. Tomatoes are throwable; keys are not.</div>'},
+ {h:'HOW TO MOVE',
+  t:'<div class=card><b>WASD</b> move · <b>Shift</b> sprint (loud) · <b>C</b> crouch (quiet)<br><b>E</b> pick up, hold to search, climb the stairs, hide in a wardrobe<br><b>Click / F</b> throw · <b>Q</b> drop · <b>1–4</b> slots<br><b>H</b> his belief map · <b>P</b> his path · <b>Esc</b> pause</div><div class=card>At night he goes to bed. That is when the house is quiet and the floorboards are loud. If he catches you, he remembers. If he finds your hiding place once, he will check it next time.</div>'}
+];
+let cutI=0;
+function showCut(){
+ const s=CUT[cutI];
+ showOv(s.h,s.t,[
+  {t:cutI<CUT.length-1?'NEXT':'LET ME IN',fn:()=>{cutI++;if(cutI>=CUT.length)start();else showCut()}},
+  {t:'SKIP',ghost:1,fn:()=>start()}
+ ]);
+}
+function beginCutscene(){state='cut';cutI=0;showCut()}
+function start(){
+ cutI=CUT.length;
+ resetRound();
+ say('Find the lockpick in the shed. Tomatoes grow in the garden.',4);
+}
+function menu(){
+ state='menu';
+ const mem=MEM.catches+MEM.wins;
+ showOv('HELLO MISTRAL 2D',
+  '<div class=card>Steal the SECRET from the vault. He has a life, a routine, and a memory.</div>'+
+  (mem?'<div class=card><b>He remembers '+MEM.catches+' catch'+(MEM.catches===1?'':'es')+'</b> and '+MEM.wins+' break-in'+(MEM.wins===1?'':'s')+'. The windows you used are on his list.</div>':'')+
+  '<small>WASD move · Shift sprint · C crouch · E interact · Click/F throw · Q drop · 1-4 slots · H belief · P path · Esc pause</small>',
+  [{t:'PLAY',fn:()=>beginCutscene()},{t:'NEW GAME — HE FORGETS',ghost:1,fn:()=>{wipeMemory();resetRound();beginCutscene()}}]);
+}
+
+/* -------------------------------------------------------------- main tick */
+function tick(dt){
+ tm+=dt;
+ if(state!=='play')return;
+ hour=(hour+dt/10)%24;
+ if(msgT>0){msgT-=dt;if(msgT<=0)$('msg').style.display='none'}
+ playerUpdate(dt);
+ updPR(dt);
+ updDoors(dt);
+ updCams(dt);
+ aiUpdate(dt);
+ flushMem(dt);
+ for(const n of NZ)n.t+=dt;
+ while(NZ.length&&NZ[0].t>.9)NZ.shift();
+}
+
+/* ---------------------------------------------------------------- render */
+const cv=$('c'),cx=cv.getContext('2d');
+const FLC=[document.createElement('canvas'),document.createElement('canvas')];
+for(let z=0;z<NF;z++){
+ const c=FLC[z];c.width=W*32;c.height=H*32;
+ const g=c.getContext('2d');
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  let col;
+  if(z===0)col=(x+y)%2?'#86c96e':'#7fc268';
+  else col=(x+y)%2?'#6b5a4a':'#655445';
+  const room=ROOMS.find(r=>r.z===z&&x>=r.x0&&x<=r.x1&&y>=r.y0&&y<=r.y1);
+  if(room)col=room.c;
+  if(z===0&&((x===28&&y>30&&y<39)||(y===31&&x>=26&&x<=30)))col='#d9d4c2';
+  g.fillStyle=col;g.fillRect(x*32,y*32,32,32);
+  if(room){g.strokeStyle='rgba(0,0,0,.06)';g.strokeRect(x*32,y*32,32,32)}
+ }
+}
+const FC={couch:'#4f7fd1',tv:'#222',table:'#b07a45',shelf:'#7a5230',sink:'#9ab',stove:'#888',counter:'#d8d0c0',fridge:'#f2f2f2',coat:'#6a4',mirror:'#9cf',bed:'#e9e4f0',wardrobe:'#7a5230',night:'#a57',desk:'#9b6a3a',toilet:'#fff',tub:'#dff',bench:'#a07a3a',rack:'#554',mbox:'#36c',trash:'#556',toolbox:'#c33',dresser:'#7a5230',cabinet:'#7a5230',crib:'#e9e4f0',box:'#c8964f',stairs:'#c9a227'};
+const IC={tomato:'#e63b2e',can:'#c33',vase:'#3a86d9',chair:'#b5651d',box:'#c8964f',lamp:'#ffe27a'};
+function nightAmt(){
+ const h=hour;
+ if(h>=21||h<5)return 1;
+ if(h>=20)return h-20;
+ if(h<6)return 6-h;
+ return 0;
+}
+function draw(dt){
+ const w=innerWidth,h=innerHeight,dpr=Math.min(devicePixelRatio||1,2);
+ if(cv.width!==(w*dpr|0)||cv.height!==(h*dpr|0)){cv.width=w*dpr|0;cv.height=h*dpr|0}
+ cam.x+=(P.x-cam.x)*Math.min(1,dt*8);
+ cam.y+=(P.y-cam.y)*Math.min(1,dt*8);
+ const c=cx;
+ c.setTransform(1,0,0,1,0,0);
+ c.fillStyle='#16202b';c.fillRect(0,0,cv.width,cv.height);
+ const S=dpr*ZOOM;
+ c.setTransform(S,0,0,S,dpr*(w/2-cam.x*ZOOM),dpr*(h/2-cam.y*ZOOM));
+ c.lineWidth=.06;c.lineJoin='round';
+ c.drawImage(FLC[P.z],0,0,W,H);
+ const x0=Math.max(0,((cam.x-w/2/ZOOM)|0)-1),x1=Math.min(W-1,((cam.x+w/2/ZOOM)|0)+1);
+ const y0=Math.max(0,((cam.y-h/2/ZOOM)|0)-1),y1=Math.min(H-1,((cam.y+h/2/ZOOM)|0)+1);
+ const GR=FG[P.z];
+ c.strokeStyle='#1b1e22';
+ for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+  const ch=GR[y][x];let col=null,i=0;
+  if(ch==='#')col='#3b3f46';else if(ch==='F')col='#fff';else if(ch==='W')col='#9fd4ef';
+  else if(ch==='w')col='#d8f1ff';else if(ch==='X')col='#8a6246';else if(ch==='L')col='#cc3b32';
+  else if(ch==='B')col='#7a3db0';else if(ch==='D'){col='#a0632c';i=.15}
+  else if(ch==='U'||ch==='V'){col=ch==='U'?'#c9a227':'#6f8fbf';i=.12}
+  if(!col)continue;
+  if(ch==='D'&&DRM[cellKey(P.z,x,y)]&&DRM[cellKey(P.z,x,y)].o>.4)c.globalAlpha=.35;
+  c.fillStyle=col;c.fillRect(x+i,y+i,1-2*i,1-2*i);
+  if(ch!=='#')c.strokeRect(x+i,y+i,1-2*i,1-2*i);
+  c.globalAlpha=1;
+  if(ch==='w'){
+   c.strokeStyle='#789';c.beginPath();c.moveTo(x+.1,y+.9);c.lineTo(x+.5,y+.3);c.lineTo(x+.9,y+.9);c.stroke();c.strokeStyle='#1b1e22';
+  }
+  if(ch==='U'||ch==='V'){
+   c.strokeStyle='#1b1e22';c.beginPath();
+   for(let k=1;k<=3;k++){c.moveTo(x+.2,y+k*.22+.1);c.lineTo(x+.8,y+k*.22+.1)}
+   c.stroke();
+  }
+ }
+ for(const f of FURN[P.z]){
+  if(f[1]+f[3]<x0-1||f[1]>x1+1||f[2]+f[4]<y0-1||f[2]>y1+1)continue;
+  c.fillStyle=f[0]==='tree'?'#3f9a4a':FC[f[0]]||'#999';
+  if(f[0]==='tree'){c.beginPath();c.arc(f[1]+.5,f[2]+.5,1.1,0,7);c.fill();c.stroke()}
+  else{c.fillRect(f[1]+.05,f[2]+.05,f[3]-.1,f[4]-.1);c.strokeRect(f[1]+.05,f[2]+.05,f[3]-.1,f[4]-.1)}
+ }
+ if(P.z===0)for(const p of PLOTS){
+  c.fillStyle='#2f8a3a';c.beginPath();c.arc(p.x+.5,p.y+.5,.45,0,7);c.fill();
+  c.fillStyle='#e63b2e';
+  for(let i=0;i<p.n;i++){c.beginPath();c.arc(p.x+.3+i*.2,p.y+.6,.11,0,7);c.fill()}
+ }
+ for(const s of SPL){
+  if(s.z!==P.z)continue;
+  c.fillStyle=s.k==='splat'?'#e63b2eaa':'#7ec8ffaa';c.beginPath();c.arc(s.x,s.y,.35,0,7);c.fill();
+ }
+ for(const t of TRAPS){
+  if(t.z!==P.z)continue;
+  c.strokeStyle=t.armed?'#cc3b32':'#888';c.lineWidth=.08;c.beginPath();
+  c.arc(t.x+.5,t.y+.5,.32,0,7);c.moveTo(t.x+.3,t.y+.3);c.lineTo(t.x+.7,t.y+.7);
+  c.moveTo(t.x+.7,t.y+.3);c.lineTo(t.x+.3,t.y+.7);c.stroke();
+ }
+ c.lineWidth=.06;c.strokeStyle='#1b1e22';
+ for(const k of CT)if(!k.done&&k.z===P.z){c.fillStyle='#ffd23f';c.fillRect(k.x-.15,k.y-.15,.3,.3)}
+ if(!SECRET.got&&P.z===SECRET.z){c.fillStyle='#ffd23f';c.beginPath();c.arc(SECRET.x,SECRET.y,.3+Math.sin(tm*4)*.05,0,7);c.fill();c.stroke()}
+ for(const i of ITEMS){
+  if(i.x<0||i.fly||invHas(i)||i.z!==P.z)continue;
+  c.fillStyle=IC[i.k]||'#999';c.beginPath();
+  if(i.k==='chair'||i.k==='box')c.rect(i.x-.2,i.y-.2,.4,.4);else c.arc(i.x,i.y,.2,0,7);
+  c.fill();c.stroke();
+ }
+ for(const p of PR){
+  if(p.dead||p.zf!==P.z)continue;
+  c.fillStyle='#0004';c.beginPath();c.arc(p.x,p.y,.15,0,7);c.fill();
+  c.fillStyle=IC[p.k]||'#999';c.beginPath();c.arc(p.x,p.y-p.z*.25,.18,0,7);c.fill();c.stroke();
+ }
+ for(const cm of CAMS){
+  if(cm.z!==P.z)continue;
+  c.fillStyle='#222';c.fillRect(cm.x-.2,cm.y-.2,.4,.4);
+  c.beginPath();c.moveTo(cm.x,cm.y);
+  for(let i=0;i<=14;i++){
+   const a=cm.a-CAMCONE+2*CAMCONE*i/14;
+   let ex=cm.x,ey=cm.y;
+   for(let r=.3;r<CAMR;r+=.25){
+    const x=cm.x+Math.cos(a)*r,y=cm.y+Math.sin(a)*r,ch=T(x,y,cm.z);
+    if(ch==='#'||ch==='S'||ch==='X'||ch==='L'||ch==='B'||ch==='T'||ch==='W'||(ch==='D'&&doorClosed(x|0,y|0,cm.z)))break;
+    ex=x;ey=y;
+   }
+   c.lineTo(ex,ey);
+  }
+  c.closePath();c.fillStyle=cm.sees?'rgba(232,69,58,.25)':'rgba(232,69,58,.08)';c.fill();c.strokeStyle='#1b1e22';
+ }
+ if(SHOW.bel){
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+   const v=bel[CC(P.z,x,y)];
+   if(v>.002){c.fillStyle='rgba(255,0,60,'+Math.min(.65,v*14)+')';c.fillRect(x,y,1,1)}
+  }
+ }
+ for(const n of NZ){
+  if(n.z!==P.z)continue;
+  c.strokeStyle='rgba(255,255,255,'+(.7*(1-n.t/.9))+')';c.lineWidth=.08;c.beginPath();
+  c.arc(n.x,n.y,n.r*Math.min(1,n.t/.9),0,7);c.stroke();
+ }
+ c.lineWidth=.06;
+ if(N.z===P.z&&cone.length){
+  c.beginPath();c.moveTo(N.x,N.y);
+  for(const q of cone)c.lineTo(q[0],q[1]);
+  c.closePath();
+  c.fillStyle=N.mode==='chase'?'rgba(232,69,58,.22)':N.al>.15?'rgba(224,194,58,.26)':N.sleeping?'rgba(120,120,255,.12)':'rgba(255,240,150,.17)';
+  c.fill();
+ }
+ if(SHOW.path&&N.z===P.z&&N.path.length){
+  c.strokeStyle='#2d6fdc';c.lineWidth=.1;c.beginPath();c.moveTo(N.x,N.y);
+  for(const q of N.path)c.lineTo(q[0],q[1]);c.stroke();c.lineWidth=.06;
+ }
+ if(N.z===P.z){
+  c.strokeStyle='#1b1e22';c.lineWidth=.1;
+  c.fillStyle=N.mode==='chase'?'#e8453a':'#e8803a';
+  c.beginPath();c.arc(N.x,N.y,.46,0,7);c.fill();c.stroke();
+  c.fillStyle='#2a1a10';c.beginPath();c.arc(N.x+Math.cos(N.a)*.28,N.y+Math.sin(N.a)*.28,.13,0,7);c.fill();
+  c.fillStyle='#fff';c.font='bold .5px sans-serif';c.textAlign='center';c.lineWidth=.08;c.strokeStyle='#000';
+  const lb=N.st.replace(/_/g,' ')+(N.label?' · '+N.label:'');
+  c.strokeText(lb,N.x,N.y-.8);c.fillText(lb,N.x,N.y-.8);
+  if(N.sleeping){c.font='bold 1px sans-serif';c.fillStyle='#fff';c.fillText('Zzz',N.x+.5,N.y-1.4)}
+  if(N.al>.15||N.mode==='chase'){
+   c.font='bold 1.2px sans-serif';c.fillStyle=N.mode==='chase'?'#f33':'#fc0';
+   c.fillText(N.mode==='chase'?'!':'?',N.x,N.y-1.5);
+  }
+ }
+ if(held()&&!P.hide){
+  c.setLineDash([.15,.2]);c.strokeStyle='rgba(255,255,255,.8)';c.lineWidth=.06;
+  c.beginPath();c.moveTo(P.x,P.y);c.lineTo(P.x+Math.cos(P.aim)*9,P.y+Math.sin(P.aim)*9);c.stroke();c.setLineDash([]);
+ }
+ if(!P.hide){
+  const pr=P.crouch?.27:.36;
+  c.strokeStyle='#1b1e22';c.lineWidth=.1;c.fillStyle='#f7f7f7';
+  c.beginPath();c.arc(P.x,P.y,pr,0,7);c.fill();c.stroke();
+  c.fillStyle='#2d6fdc';c.beginPath();c.arc(P.x+Math.cos(P.aim)*pr*.55,P.y+Math.sin(P.aim)*pr*.55,pr*.38,0,7);c.fill();
+  if(held()){c.fillStyle=IC[held().k]||'#999';c.beginPath();c.arc(P.x-Math.cos(P.aim)*.3,P.y-Math.sin(P.aim)*.3,.14,0,7);c.fill()}
+  if(P.hold>0&&P.tgt&&P.tgt.t){
+   c.strokeStyle='#ffd23f';c.lineWidth=.12;c.beginPath();
+   c.arc(P.x,P.y,.6,-PI/2,-PI/2+P.hold/P.tgt.t*2*PI);c.stroke();
+  }
+ }else{
+  const hh=P.hide;
+  c.strokeStyle='#ffd23f';c.lineWidth=.1;
+  c.strokeRect(hh.x+.08,hh.y+.08,.84,.84);
+ }
+ c.setTransform(1,0,0,1,0,0);
+ const vg=c.createRadialGradient(cv.width/2,cv.height/2,Math.min(cv.width,cv.height)*(isNightNow()?.30:.42),cv.width/2,cv.height/2,Math.max(cv.width,cv.height)*(isNightNow()?.62:.78));
+ vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,isNightNow()?'rgba(4,8,18,.72)':'rgba(6,12,20,.5)');
+ c.fillStyle=vg;c.fillRect(0,0,cv.width,cv.height);
+ const nt=nightAmt();
+ if(nt>.02){c.fillStyle='rgba(10,20,60,'+nt*.34+')';c.fillRect(0,0,cv.width,cv.height)}
+}
+
+/* ----------------------------------------------------------------- HUD */
+let hs='',ls='';
+function hud(){
+ const hh=Math.floor(hour),mm=Math.floor((hour%1)*60),nd=N.need;
+ const where=P.z?'upstairs':'ground floor';
+ const rm=roomOf(P.x,P.y,P.z);
+ const objs=[];
+ objs.push(hasKey('pick')?'🗝 lockpick ✔':'1. lockpick (shed, west yard)');
+ objs.push(hasKey('blue')?'🔵 blue key ✔':'2. blue key (upstairs office, locked door)');
+ objs.push(hasKey('red')?'🔴 red key ✔':'3. red key (kitchen fridge)');
+ objs.push('4. basement door (workshop) → SECRET');
+ let IH='';
+ for(let s=0;s<4;s++){
+  const it=P.inv[s];
+  IH+='<span class="slot'+(s===P.sel?' sel':'')+'"><b>'+(s+1)+'</b>'+(it?it.k:'—')+'</span>';
+ }
+ const bar=(v,col)=>'<span class=bar style="width:'+(v*60|0)+'px;background:'+col+'"></span>';
+ const goal=playerGoal();
+ const L=`<b>Objective</b>
+${objs.join('\n')}
+${P.hide?'<b style="color:#ffd23f">HIDING — hold still (E to leave)</b>':''}
+${P.tgt?'<b style="color:#ffd23f">'+P.tgt.l+'</b>':''}
+<i>${where} · ${rm} · ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}${isNightNow()?' · night':''}</i>`;
+ const D=`<b>THE NEIGHBOUR</b> ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}${isNightNow()?' 🌙':''}
+state: <b>${N.st}</b> (${N.mode}, prio ${N.prio})
+${N.z===P.z?'same floor':'<b style="color:#9cf">'+(N.z?'upstairs':'downstairs')+'</b>'}
+awareness ${bar(N.al,'#f33')}
+hunger ${bar(nd.h,'#e8c04a')} thirst ${bar(nd.t,'#6cf')}
+bored ${bar(nd.b,'#c9f')} tired ${bar(nd.e,'#99a')}
+mess ${bar(nd.d,'#a63')} suspicion ${bar(nd.s,'#f80')}
+thinks you want: <b>${goal.name}</b>
+catches ${MEM.catches} · belief ${((N.mass||0)*100|0)}% · knows ${STATE_COUNT} states`;
+ const K=`<b>KEYRING</b> <span class="dim">(never in a pocket)</span>
+<span class="key${hasKey('pick')?' got':''}">🗝 lockpick</span><span class="key${hasKey('red')?' got':''}">🔴 red</span><span class="key${hasKey('blue')?' got':''}">🔵 blue</span>`;
+ if(L+D+IH!==hs){hs=L+D+IH;$('hud').innerHTML=L;$('dbg').innerHTML=D;$('inv').innerHTML=IH}
+ if(K!==ls){ls=K;$('keys').innerHTML=K}
+}
+function frame(t){
+ requestAnimationFrame(frame);
+ const dt=Math.min(.05,(t-lt)/1000||0);
+ lt=t;
+ if(state==='play')tick(dt);
+ if(P){draw(dt);hud()}
+}
+
+/* ----------------------------------------------------------------- input */
+addEventListener('keydown',e=>{
+ const k=(e.key||'').toLowerCase();K[k]=1;
+ if(state==='play'){
+  if(k>='1'&&k<='4')P.sel=k.charCodeAt(0)-49;
+  if(k==='q'){
+   const i=held();
+   if(i&&!P.hide){
+    P.inv[P.sel]=null;i.x=P.x;i.y=P.y;i.z=P.z;
+    if(i.k==='tomato'){SPL.push({x:P.x,y:P.y,z:P.z,k:'splat'})}
+    else if(ITEMS.indexOf(i)<0)ITEMS.push(i);
+   }
+  }
+  if(k==='f')throwHeld();
+  if(k==='e'&&P.tgt&&P.tgt.t===0)doTarget(P.tgt);
+  if(k==='h')SHOW.bel^=1;
+  if(k==='p')SHOW.path^=1;
+  if(k==='escape'){
+   state='paused';
+   showOv('PAUSED','<div class=card>He is still in there. The clock keeps running only when you do.</div>',
+    [{t:'RESUME',fn:()=>{state='play';hideOv()}},
+     {t:'NEW GAME — HE FORGETS',ghost:1,fn:()=>{wipeMemory();resetRound();beginCutscene()}}]);
+  }
+ }else if(k==='escape'){
+  if(state==='paused'){state='play';hideOv()}
+  else if(state==='cut'){start()}
+  else if(state==='menu'){beginCutscene()}
+ }
+ if(k.startsWith('arrow')||k===' ')e.preventDefault();
+});
+addEventListener('keyup',e=>K[(e.key||'').toLowerCase()]=0);
+addEventListener('blur',()=>{for(const k in K)K[k]=0});
+addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+addEventListener('mousedown',e=>{if(e.target===cv&&state==='play')throwHeld()});
+addEventListener('wheel',e=>{ZOOM=cl(ZOOM*(e.deltaY<0?1.1:.91),12,60)},{passive:true});
+
+resetPlayer();resetN();
+menu();
+let lt=0;
+requestAnimationFrame(frame);
+
+/* Debug/automation handle (also used by test/game.js). */
+window.__g={
+ G:FG,T,TASKS,S,ST,STATE_COUNT,tick,start,menu,newGame,beginCutscene,showCut,
+ findPath,inspectSpot,nearestFree,nearestStandable,standableCell,walkTo,follow,
+ unstickEntity,forceUnstuck,evictCell,run,pickTask,startChase,loseChase,seedBelief,diffuse,
+ beliefSpots,bestBelief,playerGoal,resetRound,retry,caught,win,doTarget,findTarget,throwHeld,
+ noise,los,canSee,clearLine,npass,ppass,circFree,walls,roomOf,roomByName,
+ trapValid,bestTrapNear,useStairs,stairsHere,stamp,bix,CC,
+ get P(){return P},get N(){return N},get state(){return state},get hour(){return hour},get tm(){return tm},get cam(){return cam},
+ ITEMS,SPL,PR,NZ,bel,vis,CT,TRAPS,CAMS,DRM,DR,PLOTS,HIDES,ROOMS,SECRET,FG,keys:K,wipeMemory,get MEM(){return MEM},
+ startChase,learn,searchNext,chaseTarget,nightAmt,isNightNow,ensureReach,trapValid,camValid,
+ hourSet:h=>{hour=h},setState:s=>{state=s},SHOW,ZOOM:()=>ZOOM,hasKey,keyCount,nightAmt,
+ saveMemory:save,heatAt,heatKey,hourAffinity,entrySpot,guardObjective,chaseCutoff,
+ get OVBTNS(){return OVBTNS},showOv
+};
+</script></body></html>
