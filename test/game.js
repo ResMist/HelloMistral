@@ -42,7 +42,7 @@ function run(g, seconds) {
   while (g.state === 'cut' && guard++ < 10) g.OVBTNS[0].fn();
   for (let i = 0; i < 6; i++) b.pumpFrame(16.7 * (i + 1));
   check('the render loop draws a frame', !!b.els.hud && b.els.hud.innerHTML.length > 0, b.warnings.join(' | '));
-  check('the HUD shows the keyring', /KEYRING/.test(b.els.keys.innerHTML));
+  check('the HUD hides the old keyring panel', b.els.keys.style.display === 'none');
   check('the objectives put the office before the fridge',
     b.els.hud.innerHTML.indexOf('upstairs office') < b.els.hud.innerHTML.indexOf('kitchen fridge'));
   check('the bag has four slots', (b.els.inv.innerHTML.match(/slot/g) || []).length >= 4);
@@ -108,27 +108,39 @@ function run(g, seconds) {
   eq('he sees you on his floor', g.N.sees, 1);
 }
 
-/* -------------------------------------------------------------- keyring */
+/* ------------------------------------------------------- keys are items */
 {
   const b = boot(6); const g = b.g; g.start();
   g.P.x = 4.5; g.P.y = 10.9; g.P.z = 0; g.tick(1 / 60);
   g.doTarget(g.findTarget());
-  eq('toolbox gives the lockpick', g.P.keys.pick, 1);
+  eq('toolbox puts the lockpick in the bag', g.P.inv[0].k, 'lockpick');
   g.P.x = 33.5; g.P.y = 8.5; g.P.z = 0; g.tick(1 / 60);
   g.doTarget(g.findTarget());
-  eq('fridge gives the red key', g.P.keys.red, 1);
+  check('fridge puts the red key in the bag', g.P.inv.some(i => i && i.k === 'red key'));
   g.P.x = 37.5; g.P.y = 10.4; g.P.z = 1; g.tick(1 / 60);
   g.doTarget(g.findTarget());
-  eq('office desk gives the blue key', g.P.keys.blue, 1);
-  check('keys never enter the inventory', g.P.inv.every(i => !i || !['red', 'blue', 'pick'].includes(i.k)));
-  eq('keyring counts three', g.keyCount(), 3);
+  check('office desk puts the blue key in the bag', g.P.inv.some(i => i && i.k === 'blue key'));
+  eq('all three keys take bag slots', g.keyCount(), 3);
+  check('a full bag refuses a key', (() => {
+    const b2 = boot(66); const g2 = b2.g; g2.start();
+    for (let i = 0; i < 4; i++) g2.P.inv[i] = { k: 'tomato', x: -9, y: -9 };
+    g2.P.x = 4.5; g2.P.y = 10.9; g2.P.z = 0; g2.tick(1 / 60);
+    g2.doTarget(g2.findTarget());
+    return !g2.CT.find(c => c.id === 'toolbox').done;
+  })());
+  check('a dropped key lands in the world', (() => {
+    const b3 = boot(67); const g3 = b3.g; g3.start();
+    g3.P.inv[0] = { k: 'lockpick', x: -9, y: -9 };
+    g3.P.sel = 0; g3.dropHeld(); g3.tick(1 / 60);
+    return g3.P.inv[0] === null && g3.ITEMS.some(i => i.k === 'lockpick' && i.x > 0);
+  })());
 }
 {
   const b = boot(7); const g = b.g; g.start();
   g.P.x = 33.4; g.P.y = 11.5; g.P.z = 0; g.tick(1 / 60);
   check('study door needs the lockpick', !/Pick the lock/.test((g.findTarget() || {}).l || ''));
-  g.P.keys.pick = 1; g.tick(1 / 60);
-  check('with the lockpick the door can be picked', /Pick the lock/.test((g.findTarget() || {}).l || ''));
+  g.P.inv[0] = { k: 'lockpick', x: -9, y: -9 }; g.tick(1 / 60);
+  check('with the lockpick in the bag the door can be picked', /Pick the lock/.test((g.findTarget() || {}).l || ''));
   g.doTarget(g.findTarget());
   eq('picked door becomes a door', g.T(34, 11, 0), 'D');
 }
@@ -136,17 +148,10 @@ function run(g, seconds) {
   const b = boot(8); const g = b.g; g.start();
   g.P.x = 42.5; g.P.y = 27.5; g.P.z = 0; g.tick(1 / 60);
   check('vault needs both keys', !/Unlock the basement/.test((g.findTarget() || {}).l || ''));
-  g.P.keys.red = 1; g.tick(1 / 60);
+  g.P.inv[0] = { k: 'red key', x: -9, y: -9 }; g.tick(1 / 60);
   check('one key is not enough', !/Unlock the basement/.test((g.findTarget() || {}).l || ''));
-  g.P.keys.blue = 1; g.tick(1 / 60);
+  g.P.inv[1] = { k: 'blue key', x: -9, y: -9 }; g.tick(1 / 60);
   check('two keys open the vault', /Unlock the basement/.test((g.findTarget() || {}).l || ''));
-}
-{
-  const b = boot(9); const g = b.g; g.start();
-  g.P.keys.pick = 1; g.P.keys.red = 1; g.P.keys.blue = 1;
-  g.P.inv[0] = { k: 'pick', x: -9, y: -9 };
-  g.keys.q = 1; g.tick(1 / 60); g.keys.q = 0;
-  check('keys are not throwable or droppable', !!g.P.keys.pick && !!g.P.keys.red && !!g.P.keys.blue && g.P.inv[0].k === 'pick');
 }
 
 /* ---------------------------------------------------------- trap rules */
@@ -204,6 +209,169 @@ function run(g, seconds) {
   check('he never cuts off through a ceiling', g.chaseCutoff() === null);
 }
 
+/* --------------------------------------------------- hearing & the model */
+{
+  const b = boot(40); const g = b.g; g.start();
+  eq('the clock starts at midday', Math.floor(g.hour), 12);
+  // he is busy watching TV in the living room when you smash a window
+  g.N.x = 16.5; g.N.y = 12.5; g.N.z = 0; g.N.mode = 'idle'; g.N.st = 'watch_tv';
+  g.N.script = [{ wait: 20, label: 'watch tv' }]; g.N.si = 0; g.N.path = [];
+  g.P.x = 32.5; g.P.y = 12.5; g.P.z = 0;
+  g.noise(32.5, 8.5, 0, 40, 'glass');
+  eq('a smash interrupts what he was doing', g.N.st, 'check_window');
+  run(g, .4);
+  g.noise(32.5, 8.5, 0, 40, 'glass');
+  run(g, .4);
+  g.noise(30.5, 10.5, 0, 40, 'impact');
+  eq('a ruckus becomes a hunt', g.N.mode, 'search');
+  check('the hunt is seeded on the noise', g.N.mass > 0, 'mass ' + g.N.mass);
+  check('suspicion climbs when you are loud', g.MEM.suspicion > .05);
+}
+{
+  const b = boot(41); const g = b.g; g.start();
+  g.N.x = 20.5; g.N.y = 12.5; g.N.z = 0; g.N.mode = 'idle'; g.N.st = 'idle';
+  g.N.script = [{ wait: 20, label: 'standing' }]; g.N.si = 0;
+  g.P.x = 20.5; g.P.y = 26.5; g.P.z = 1;   // upstairs, out of sight
+  for (let i = 0; i < 4; i++) { g.noise(17.5 + i * 1.4, 12.5, 0, 8, 'step'); run(g, .5); }
+  check('a run of footsteps becomes a track', /track/.test(g.N.st) || g.N.mode === 'search', g.N.st + '/' + g.N.mode);
+}
+{
+  const b = boot(42); const g = b.g;
+  eq('the clock starts at 12 on the menu too', g.hour, 12);
+  check('the model has at least a thousand weights', g.AIW.count >= 1000, 'has ' + g.AIW.count);
+  let nz = 0; for (const v of g.AIW.hourBlock) if (v > 0) nz++;
+  eq('the hour tensor starts empty', nz, 0);
+  check('the feature weights are real numbers', Array.from(g.FEATW).every(v => typeof v === 'number' && isFinite(v)));
+}
+{
+  const store = {};
+  const b = boot(43, store); const g = b.g; g.start();
+  g.P.x = 28.5; g.P.y = 26.5; g.P.z = 0;
+  g.N.x = 28.6; g.N.y = 26.6; g.N.z = 0;
+  g.caught();
+  let nz = 0; for (const v of g.AIW.hourBlock) if (v > 0) nz++;
+  check('a catch trains the hour tensor', nz > 0, nz + ' blocks');
+  g.saveMemory();
+  const b2 = boot(44, store); const g2 = b2.g;
+  let nz2 = 0; for (const v of g2.AIW.hourBlock) if (v > 0) nz2++;
+  eq('the learned weights survive a reload', nz2, nz);
+  g2.newGame();
+  let nz3 = 0; for (const v of g2.AIW.hourBlock) if (v > 0) nz3++;
+  eq('new game forgets the weights', nz3, 0);
+}
+
+/* ------------------------------------------------------------- music gate */
+{
+  const b = boot(45); const g = b.g; g.start();
+  g.P.x = 20.5; g.P.y = 20.5; g.P.z = 0; g.N.mode = 'idle';
+  check('no chase cue when he is not after you', !g.musicWanted());
+  g.N.mode = 'chase'; g.keys.w = 0;
+  check('no chase cue while you stand still', !g.musicWanted());
+  g.keys.w = 1;
+  check('the chase cue starts when you run', !!g.musicWanted());
+  g.P.hide = g.HIDES[0];
+  check('and it stops while you hide', !g.musicWanted());
+  g.P.hide = null; g.P.trap = 2;
+  check('a trap on your leg silences it', !g.musicWanted());
+  g.P.trap = 0; g.keys.w = 0; g.N.mode = 'idle';
+}
+
+/* ------------------------------------------- escape routes, relock, feint */
+{
+  const b = boot(50); const g = b.g; g.start();
+  g.N.x = 16.5; g.N.y = 24.5; g.N.z = 0; g.N.mode = 'chase'; g.N.st = 'chase'; g.N.chaseT = 1;
+  g.P.x = 30.5; g.P.y = 26.5; g.P.z = 0;
+  run(g, .25);
+  const rs = g.N.routes || [];
+  check('the chase costs several ways out at once', rs.length >= 2, 'has ' + rs.length);
+  check('they lie on different escape lines', new Set(rs.map(r => r.name)).size >= 2,
+    rs.map(r => r.name).join(', '));
+  const first = rs[0];
+  g.N.x = first.x; g.N.y = first.y;
+  run(g, .1);
+  check('standing on one shuts that way out', g.N.cut >= 1, 'cut ' + g.N.cut);
+  const next = g.N.routes[g.N.routeI] || g.N.routes[0];
+  check('and the next one is somewhere else', !!next &&
+    Math.hypot(next.x - first.x, next.y - first.y) > 1.5,
+    next ? Math.hypot(next.x - first.x, next.y - first.y).toFixed(2) : 'none');
+  check('the points never sit on top of each other', rs.every((r, i) =>
+    rs.every((q, j) => i === j || Math.hypot(r.x - q.x, r.y - q.y) > 2)), 'too close');
+}
+{
+  const b = boot(51); const g = b.g; g.start();
+  // he picked the office lock earlier; now the player is on the far side
+  g.FG[1][10][34] = 'D';
+  if (g.DRM['1:34,10']) { g.DRM['1:34,10'].o = 1; g.DRM['1:34,10'].t = 0; }
+  g.MEM.unlocked['1:34,10'] = 'L';
+  g.MEM.suspicion = .5;
+  g.P.x = 20.5; g.P.y = 20.5; g.P.z = 1;
+  g.N.x = 33.2; g.N.y = 10.6; g.N.z = 1; g.N.mode = 'idle'; g.N.script = []; g.N.need.s = .3;
+  g.pickTask();
+  eq('an open door he remembers brings him back', g.N.st, 'relock_door');
+  const before = g.MEM.suspicion;
+  run(g, 4);
+  eq('and he locks it again', g.T(34, 10, 1), 'L');
+  check('which makes him more suspicious', g.MEM.suspicion > before);
+}
+{
+  const b = boot(52); const g = b.g; g.start();
+  g.N.z = 1; g.N.lastSeen = { x: 30.5, y: 24.5, z: 1 };
+  g.N.mass = .4; g.MEM.hides = {};
+  g.seedBelief();
+  let fired = false, looked = 0;
+  for (let i = 0; i < 80 && !fired; i++) {
+    g.N.mode = 'search'; g.N.searchN = 4; g.N.script = [];
+    g.searchNext(); looked++;
+    if (g.N.st === 'feint_retreat') fired = true;
+  }
+  check('after a few sweeps he fakes giving up', fired, 'looked ' + looked);
+}
+
+{
+  // a single-tile doorway: he used to grind on the corner and stop
+  const b = boot(54); const g = b.g; g.start();
+  g.FG[1][10][34] = 'D'; if (g.DRM['1:34,10']) g.DRM['1:34,10'].o = 1;
+  g.N.x = 33.2; g.N.y = 10.0; g.N.z = 1; g.N.mode = 'idle'; g.N.script = [];
+  g.N.path = g.findPath(33.2, 10.0, 35.5, 10.5, 1);
+  for (let i = 0; i < 240; i++) g.follow(1 / 60, 2.6, 1);
+  check('he slides through a doorway instead of grinding the corner',
+    Math.hypot(g.N.x - 35.5, g.N.y - 10.5) < .8,
+    g.N.x.toFixed(2) + ',' + g.N.y.toFixed(2));
+}
+
+/* ------------------------------------------------------- the house is winnable */
+{
+  const b = boot(53); const g = b.g; g.start();
+  const at = (x, y, z) => { g.P.x = x; g.P.y = y; g.P.z = z; run(g, .1); };
+  const take = (x, y, z) => { at(x, y, z); const t = g.findTarget(); if (t) g.doTarget(t); run(g, .1); };
+  take(4, 10.9, 0);
+  check('the shed gives the lockpick', g.hasKey('pick'));
+  take(33.2, 10.5, 1);
+  eq('the office door opens with it', g.T(34, 10, 1), 'D');
+  take(36.4, 10.4, 1);
+  check('the office desk gives the blue key', g.hasKey('blue'));
+  take(33.4, 9.4, 0);
+  check('the kitchen gives the red key', g.hasKey('red'));
+  take(42.3, 27.5, 0);
+  eq('both keys open the basement', g.T(43, 27, 0), 'D');
+  at(45.6, 26.5, 0);
+  run(g, .3);
+  eq('the vault wins the match', g.state, 'win');
+  check('and the win is remembered', g.MEM.wins === 1);
+}
+
+/* -------------------------------------------------------------- furniture */
+{
+  const b = boot(46); const g = b.g;
+  eq('the living room has a bookcase', g.T(21, 13, 0), 'S');
+  eq('the upstairs office has a safe', g.T(41, 15, 1), 'S');
+  eq('the yard still has its trees', g.T(14, 3, 0), 'S');
+  check('both floors are furnished', g.FURN[0].length > 30 && g.FURN[1].length > 20,
+    g.FURN[0].length + '/' + g.FURN[1].length);
+  eq('new furniture in the foyer', g.T(24, 24, 0), 'S');
+  eq('and upstairs in the nursery', g.T(31, 9, 1), 'S');
+}
+
 /* --------------------------------------------------------------- night */
 {
   const b = boot(13); const g = b.g; g.start();
@@ -229,8 +397,8 @@ function run(g, seconds) {
 {
   const b = boot(15); const g = b.g; g.start();
   g.hourSet(23);
-  g.P.x = 28.5; g.P.y = 29.4; g.P.z = 0;
-  g.N.x = 28.5; g.N.y = 22.5; g.N.z = 0; g.N.a = Math.PI / 2; g.N.sleeping = 0;
+  g.P.x = 20.5; g.P.y = 29.4; g.P.z = 0;
+  g.N.x = 20.5; g.N.y = 22.5; g.N.z = 0; g.N.a = Math.PI / 2; g.N.sleeping = 0;
   g.N.script = [{ wait: 99, label: 'standing' }]; g.N.si = 0; g.N.path = [];
   run(g, .3);
   const nightSees = g.N.sees;
@@ -323,6 +491,7 @@ function run(g, seconds) {
   const b = boot(23); const g = b.g; g.start();
   g.P.x = 28.5; g.P.y = 27.5; g.P.z = 0;
   g.N.x = 28.5; g.N.y = 23.5; g.N.z = 0; g.N.a = Math.PI / 2;
+  g.N.script = [{ wait: 99, label: 'standing' }]; g.N.si = 0; g.N.path = [];
   run(g, .5);
   eq('line of sight in an open room', g.N.sees, 1);
   // the wall between the foyer and the bedroom
@@ -390,8 +559,9 @@ function run(g, seconds) {
 {
   const b = boot(28); const g = b.g; g.start();
   // he sees you upstairs, loses you, and must not stampede back downstairs
-  g.P.x = 18.5; g.P.y = 12.5; g.P.z = 1;
-  g.N.x = 24.5; g.N.y = 16.5; g.N.z = 1; g.N.a = Math.PI; g.N.script = []; g.N.path = [];
+  g.P.x = 26.5; g.P.y = 16.5; g.P.z = 1;
+  g.N.x = 30.5; g.N.y = 16.5; g.N.z = 1; g.N.a = Math.PI; g.N.vt = 0;
+  g.N.script = [{ wait: 99, label: 'standing' }]; g.N.si = 0; g.N.path = [];
   run(g, .5);
   g.startChase();
   check('upstairs chase starts', g.N.mode === 'chase' && g.N.sees === 1);
