@@ -1,5 +1,28 @@
 # HelloMistral 🔦
 
+## The current game: `index.html`
+
+`index.html` is the whole game in one file — no build step, no dependencies, no network.
+Open it directly in a browser and press **PLAY** (or **PCG PLAY** with a seed for a
+procedurally generated estate).
+
+It renders the same world two ways and you can switch any time with **V** or the
+**VIEW** button on the menu:
+
+* **2D** — the original top-down view (the default).
+* **3D** — a WebGL third-person view of the very same map: extruded walls, floors and
+  furniture, humanoid figures, vision cones, item art, and the X-ray overlays drawn in
+  perspective.
+
+Both views read the same game state, so the neighbour's AI, belief map, pathfinding,
+PCG generator, inventory, traps, cameras and neural net behave identically in either one.
+There is no server component and nothing is saved between sessions.
+
+The rest of this README describes an **earlier, separate Three.js prototype** in `src/`
+that is no longer used by `index.html` (kept for history only).
+
+---
+
 A 3D stealth-horror game about breaking into your neighbor's house and reaching his
 basement — while an **AI that learns from your behavior** hunts you down.
 
