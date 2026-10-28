@@ -10,9 +10,10 @@ It renders the same world two ways and you can switch any time with **V** or the
 **VIEW** button on the menu:
 
 * **2D** — the original top-down view (the default).
-* **3D** — a WebGL third-person view of the very same map: extruded walls, floors and
-  furniture, humanoid figures, vision cones, item art, and the X-ray overlays drawn in
-  perspective.
+* **3D** — a first-person WebGL view of the very same map: you stand in the player's
+  head (WASD to walk, mouse to look, click or `F` to throw), with extruded walls,
+  floors, ceilings and furniture, the neighbour as a figure, vision cones, item art
+  and the X-ray overlays drawn in perspective. There is no third-person camera.
 
 Both views read the same game state, so the neighbour's AI, belief map, pathfinding,
 PCG generator, inventory, traps, cameras and neural net behave identically in either one.

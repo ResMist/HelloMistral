@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>HelloMistral — 2D / 3D</title><style>:root{--bg:#7fc66a;--fg:#1b2a41;box-sizing:border-box}@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#2c4a35}}:root[data-theme=dark]{--bg:#2c4a35}body,html{height:100%;margin:0;overflow:hidden;background:var(--bg);font:13px system-ui,sans-serif;color:#fff}canvas{position:fixed;inset:0;width:100%;height:100%}.p{position:fixed;background:#0b0e13d9;backdrop-filter:blur(7px);border:1px solid #ffffff1f;border-radius:12px;box-shadow:0 6px 22px #0009;padding:8px 12px;line-height:1.5;pointer-events:none;z-index:3}#hud{left:10px;top:calc(10px + env(safe-area-inset-top,0px));max-width:300px}#dbg{right:10px;top:calc(10px + env(safe-area-inset-top,0px));min-width:230px;font-size:12px}#msg{left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));font:700 18px system-ui;text-align:center;background:#0b0e13e6;border:1px solid #ffd23f44;border-radius:999px;padding:9px 22px;text-shadow:0 2px 6px #000;transition:opacity .2s}#inv{left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;padding:6px 8px}.slot{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:58px;height:30px;border:2px solid #ffffff55;border-radius:6px;background:#0008;font-size:11px}.slot b{opacity:.55;font-size:10px}.slot.sel{border-color:#ffd23f;background:#000c;color:#ffd23f}.bar{display:inline-block;height:6px;background:#e8c04a;border-radius:3px;vertical-align:middle}#ov{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(#7fd0ffdd,#bff0a0ee);color:#1b2a41;text-align:center;padding:20px}#ov h1{font-size:clamp(34px,7vw,66px);margin:0;color:#ff7a1a;text-shadow:3px 3px 0 #1b2a41}#row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}#row label{font-weight:700}#pcgSeed{font:700 16px system-ui;width:150px;box-sizing:border-box;padding:11px 9px;border:2px solid #1b2a41;border-radius:10px}#pcgSeedHelp{font-size:11px;opacity:.75;max-width:110px}#ov button{font:700 20px system-ui;padding:12px 32px;border:4px solid #1b2a41;border-radius:14px;background:#ffd23f;cursor:pointer;color:#1b2a41;transition:transform .12s,background .12s,box-shadow .12s}#ov button:hover{background:#ff7a1a;transform:translateY(-2px);box-shadow:0 6px 18px #0006}#forget{font-size:15px!important;padding:10px 20px!important;background:#ff6b6b!important;color:#fff!important}#forget:hover{background:#e8453a!important}#ov small{max-width:640px;line-height:1.6}#memline{font-size:12px;opacity:.75}#gl,#ov3{display:none}#ov3{pointer-events:none}#viewchip{position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:4;font:700 11px system-ui;letter-spacing:.06em;padding:6px 10px;border-radius:999px;border:1px solid #ffffff33;background:#0b0e13d9;color:#ffd23f;pointer-events:none}#viewbtn{font-size:15px!important;padding:10px 20px!important;background:#7cc7ff!important;color:#1b2a41!important}#viewbtn:hover{background:#4fa9e8!important}</style></head><body><canvas id="c"></canvas><canvas id="gl"></canvas><canvas id="ov3"></canvas><div id="hud" class="p"></div><div id="dbg" class="p"></div><div id="inv" class="p"></div><div id="msg" class="p" style="display:none"></div><div id="viewchip">VIEW 2D · press V</div><div id="ov"><h1>HELLO MISTRAL</h1><div id="ovt">Steal the SECRET from the vault. Get the lockpick from the shed, the red key from the fridge, the blue key from the study. He has a life, a routine, and a living memory: he tracks a probability map of where you could be, cuts you off by true path distance, learns your routes, hours, hiding spots and even the exact paths you run during chases. His memory lives only inside the current game: NOTHING is saved between games or tabs.</div><div id="row"><button id="go">PLAY</button><label for="pcgSeed">Map seed</label><input id="pcgSeed" type="text" inputmode="numeric" pattern="[0-9]{1,10}" maxlength="10" aria-describedby="pcgSeedHelp" placeholder="random"><span id="pcgSeedHelp">1–4294967295; blank = random</span><button id="pcg" title="Generate a different estate footprint, rooms, yard, outbuildings, and objective locations" style="background:#47cf9b">PCG PLAY</button><button id="viewbtn" title="Switch between the 2D map view and the 3D world view (also: V)">VIEW: 2D</button><button id="forget">🧹 MAKE HIM FORGET EVERYTHING</button></div><div id="memline"></div><small>WASD move · Shift sprint (loud) · C crouch (quiet) · E pick up / hold to open · hold E to leave a hiding spot · Click or F throw (tomatoes: pick them from the garden!) · Q drop · 1-4 inventory slots · wheel zoom ·<b>P 🧠 X-RAY: heat maps, belief map, path, plans & his neural net</b>· <b>V</b> toggle 2D ↔ 3D (first person) · <b>B</b> chase camera · Esc pause</small></div><script>'use strict';
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>HelloMistral — 2D / 3D</title><style>:root{--bg:#7fc66a;--fg:#1b2a41;box-sizing:border-box}@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#2c4a35}}:root[data-theme=dark]{--bg:#2c4a35}body,html{height:100%;margin:0;overflow:hidden;background:var(--bg);font:13px system-ui,sans-serif;color:#fff}canvas{position:fixed;inset:0;width:100%;height:100%}.p{position:fixed;background:#0b0e13d9;backdrop-filter:blur(7px);border:1px solid #ffffff1f;border-radius:12px;box-shadow:0 6px 22px #0009;padding:8px 12px;line-height:1.5;pointer-events:none;z-index:3}#hud{left:10px;top:calc(10px + env(safe-area-inset-top,0px));max-width:300px}#dbg{right:10px;top:calc(10px + env(safe-area-inset-top,0px));min-width:230px;font-size:12px}#msg{left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));font:700 18px system-ui;text-align:center;background:#0b0e13e6;border:1px solid #ffd23f44;border-radius:999px;padding:9px 22px;text-shadow:0 2px 6px #000;transition:opacity .2s}#inv{left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;padding:6px 8px}.slot{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:58px;height:30px;border:2px solid #ffffff55;border-radius:6px;background:#0008;font-size:11px}.slot b{opacity:.55;font-size:10px}.slot.sel{border-color:#ffd23f;background:#000c;color:#ffd23f}.bar{display:inline-block;height:6px;background:#e8c04a;border-radius:3px;vertical-align:middle}#ov{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(#7fd0ffdd,#bff0a0ee);color:#1b2a41;text-align:center;padding:20px}#ov h1{font-size:clamp(34px,7vw,66px);margin:0;color:#ff7a1a;text-shadow:3px 3px 0 #1b2a41}#row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}#row label{font-weight:700}#pcgSeed{font:700 16px system-ui;width:150px;box-sizing:border-box;padding:11px 9px;border:2px solid #1b2a41;border-radius:10px}#pcgSeedHelp{font-size:11px;opacity:.75;max-width:110px}#ov button{font:700 20px system-ui;padding:12px 32px;border:4px solid #1b2a41;border-radius:14px;background:#ffd23f;cursor:pointer;color:#1b2a41;transition:transform .12s,background .12s,box-shadow .12s}#ov button:hover{background:#ff7a1a;transform:translateY(-2px);box-shadow:0 6px 18px #0006}#forget{font-size:15px!important;padding:10px 20px!important;background:#ff6b6b!important;color:#fff!important}#forget:hover{background:#e8453a!important}#ov small{max-width:640px;line-height:1.6}#memline{font-size:12px;opacity:.75}#gl,#ov3{display:none}#ov3{pointer-events:none}#viewchip{position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:4;font:700 11px system-ui;letter-spacing:.06em;padding:6px 10px;border-radius:999px;border:1px solid #ffffff33;background:#0b0e13d9;color:#ffd23f;pointer-events:none}#viewbtn{font-size:15px!important;padding:10px 20px!important;background:#7cc7ff!important;color:#1b2a41!important}#viewbtn:hover{background:#4fa9e8!important}</style></head><body><canvas id="c"></canvas><canvas id="gl"></canvas><canvas id="ov3"></canvas><div id="hud" class="p"></div><div id="dbg" class="p"></div><div id="inv" class="p"></div><div id="msg" class="p" style="display:none"></div><div id="viewchip">VIEW 2D · press V</div><div id="ov"><h1>HELLO MISTRAL</h1><div id="ovt">Steal the SECRET from the vault. Get the lockpick from the shed, the red key from the fridge, the blue key from the study. He has a life, a routine, and a living memory: he tracks a probability map of where you could be, cuts you off by true path distance, learns your routes, hours, hiding spots and even the exact paths you run during chases. His memory lives only inside the current game: NOTHING is saved between games or tabs.</div><div id="row"><button id="go">PLAY</button><label for="pcgSeed">Map seed</label><input id="pcgSeed" type="text" inputmode="numeric" pattern="[0-9]{1,10}" maxlength="10" aria-describedby="pcgSeedHelp" placeholder="random"><span id="pcgSeedHelp">1–4294967295; blank = random</span><button id="pcg" title="Generate a different estate footprint, rooms, yard, outbuildings, and objective locations" style="background:#47cf9b">PCG PLAY</button><button id="viewbtn" title="Switch between the 2D map view and the 3D world view (also: V)">VIEW: 2D</button><button id="forget">🧹 MAKE HIM FORGET EVERYTHING</button></div><div id="memline"></div><small>WASD move · Shift sprint (loud) · C crouch (quiet) · E pick up / hold to open · hold E to leave a hiding spot · Click or F throw (tomatoes: pick them from the garden!) · Q drop · 1-4 inventory slots · wheel zoom ·<b>P 🧠 X-RAY: heat maps, belief map, path, plans & his neural net</b>· <b>V</b> toggle 2D ↔ 3D — 3D is first person: WASD to walk, mouse to look, click/F to throw · Esc pause</small></div><script>'use strict';
 const W=56,H=57,PI=Math.PI,$=i=>document.getElementById(i),rnd=(a,b)=>a+Math.random()*(b-a),cl=(v,a,b)=>v<a?a:v>b?b:v,dist=(a,b,c,d)=>Math.hypot(a-c,b-d);
 /* ============================================================
    PRIORITY LADDER — what may interrupt what.
@@ -2679,7 +2679,15 @@ function chaseUpdate(dt){
  N.lastD=d;if(d<.8)caught()}
 function nThrow(){const k=N.carry||'box',T0=Math.max(.25,N.dist/11),px=P.x+(P.vx||0)*T0,py=P.y+(P.vy||0)*T0,dx=px-N.x,dy=py-N.y;PR.push({k,x:N.x,y:N.y,z:1.5,vx:dx/T0,vy:dy/T0,vz:(0-1.5+.5*12*T0*T0)/T0,own:'n',t:0})}
 /* ---------- projectiles, items, traps ---------- */
-function throwHeld(){const i=held();if(!i||state!='play'||P.hidden)return;P.inv[P.sel]=null;const a=P.aim;PR.push({k:i.k,item:i,x:P.x+Math.cos(a)*.5,y:P.y+Math.sin(a)*.5,z:1.1,vx:Math.cos(a)*11,vy:Math.sin(a)*11,vz:4.2,own:'p',t:0})}
+function throwHeld(){const i=held();if(state!='play'||P.hidden)return;
+ if(!i){/* never leave a click silent: say why nothing happened */
+  if(VIEW3D)say(P.tgt&&P.tgt.t==0?('Hold E to take the '+(P.tgt.o&&P.tgt.o.k?P.tgt.o.k:'thing')+' first'):'Nothing in your hand — E picks things up.',1.8);
+  return}
+ P.inv[P.sel]=null;const a=P.aim;
+ /* in 3D you throw along the CAMERA, so the pitch you look at is the pitch you throw at */
+ const pitch=VIEW3D?Z3.pitchFP:0,ey=VIEW3D?(P.crouch?Z3.eyeC:Z3.eyeH)-.16:1.1,hs=11*Math.cos(pitch);
+ PR.push({k:i.k,item:i,x:P.x+Math.cos(a)*.5,y:P.y+Math.sin(a)*.5,z:ey,vx:Math.cos(a)*hs,vy:Math.sin(a)*hs,vz:4.2+11*Math.sin(pitch),own:'p',t:0});
+ FPKICK=.28}
 function land(p,x,y){
  const i=p.item;
  /* impacts sound where they LAND — never at the thrower's position. Where the thrower might
@@ -2735,7 +2743,7 @@ function playerUpdate(dt){
  let ix=(K.d||K.arrowright?1:0)-(K.a||K.arrowleft?1:0),iy=(K.s||K.arrowdown?1:0)-(K.w||K.arrowup?1:0);let l=Math.hypot(ix,iy);
  /* in FIRST PERSON the keys are camera-relative (W walks where you look) — pure input mapping,
     the movement rules, collision and noise are untouched */
- if(l&&VIEW3D&&Z3.fp){const ca2=Math.cos(Z3.yaw),sa2=Math.sin(Z3.yaw),fw=-iy,st=ix;
+ if(l&&VIEW3D){const ca2=Math.cos(Z3.yaw),sa2=Math.sin(Z3.yaw),fw=-iy,st=ix;
   const mx2=ca2*fw-sa2*st,my2=sa2*fw+ca2*st;ix=mx2;iy=my2;l=Math.hypot(ix,iy)||1}
  const sp=(P.crouch?1.7:P.sprint?5.4:3.3)*(P.slow>0?.45:1);if(P.slow>0)P.slow-=dt;
  P.vx=P.vy=0;
@@ -2749,7 +2757,7 @@ function playerUpdate(dt){
      Once he has set off he COMMITS to it — run at QUIET means footsteps and doors can no longer
      preempt the walk halfway there and restart it on the next ping (the old restart loop) */if(N&&!N.sleeping&&N.mode!='chase'&&N.mode!='search'&&N.st!='turn_off_radio'&&N.prio<=LVL.ROUTINE&&dist(N.x,N.y,RADIO.x,RADIO.y)<14&&Math.random()<.4)run('turn_off_radio',{},LVL.QUIET)}}
  if(P.trap>0)P.trap-=dt;else if(P.hidden){}else if(l){P.vx=ix/l*sp;P.vy=iy/l*sp;mvc(P,P.vx*dt,P.vy*dt,.34,(x,y)=>ppass(x,y)&&!(G[y][x]=='D'&&doorClosed(x,y)));P.ft-=dt;if(P.ft<=0){P.ft=P.crouch?.6:P.sprint?.28:.34;noise(P.x,P.y,P.crouch?1.4:P.sprint?10:5,'step')}}
- if(VIEW3D&&Z3.fp)P.aim=Z3.yaw;else if(typeof VIEW3D!=='undefined'&&VIEW3D)P.aim=aim3D();else P.aim=Math.atan2((mouse.y-innerHeight/2)/ZOOM+cam.y-P.y,(mouse.x-innerWidth/2)/ZOOM+cam.x-P.x);
+ if(VIEW3D)P.aim=Z3.yaw;else P.aim=Math.atan2((mouse.y-innerHeight/2)/ZOOM+cam.y-P.y,(mouse.x-innerWidth/2)/ZOOM+cam.x-P.x);
  /* NOTE: he learns nothing here. Entry points, door habits and room heat are only learned from what he actually sees or hears (observe/learnEntry). */
  P.lastCell=(P.x|0)+','+(P.y|0);
  P.tgt=findTarget();if(P.tgt&&P.tgt.t>0&&K.e){P.hold+=dt;if(P.hold>=P.tgt.t){doTarget(P.tgt);P.hold=0}}else P.hold=0;
@@ -3140,7 +3148,7 @@ function hud(){const hh=Math.floor(hour),mm=Math.floor((hour%1)*60),nd=N.need;
  if(L+D+IH!==hs){hs=L+D+IH;$('hud').innerHTML=L;$('dbg').innerHTML=D;$('inv').innerHTML=IH}}
 function frame(t){requestAnimationFrame(frame);const dt=Math.min(.05,(t-lt)/1000||0);lt=t;if(state=='play')tick(dt);updMusic(dt);if(P){if(VIEW3D){render3D(dt);overlay3D();}else draw(dt);hud()}}
 addEventListener('keydown',e=>{const k=e.key.toLowerCase();K[k]=1;audioInit();if(k=='v'){toggleView();return}
- if(k=='b'&&VIEW3D){Z3.fp=!Z3.fp;const ch=$('viewchip');if(ch)ch.textContent=Z3.fp?'VIEW 3D · FIRST PERSON · V / B':'VIEW 3D · chase cam · V / B';say(Z3.fp?'First person (WASD + mouse)':'Chase camera (third person)',1.6);return}if(state=='play'){
+ if(state=='play'){
  if(k>='1'&&k<='4')P.sel=k.charCodeAt(0)-49;
  if(k=='q'){const i=held();if(i){P.inv[P.sel]=null;i.x=P.x;i.y=P.y;if(i.k=='tomato'){SPL.push({x:P.x,y:P.y,k:'splat'})}else if(ITEMS.indexOf(i)<0)ITEMS.push(i)}}
  if(k=='f')throwHeld();if(k=='e'&&P.tgt&&P.tgt.t==0){doTarget(P.tgt)}if(k=='p'){SHOW.all^=1;SHOW.bel=SHOW.path=SHOW.all;say('🧠 X-RAY '+(SHOW.all?'ON — his whole mind is visible':'OFF'),1.5)}if(k=='escape'){state='paused';showOv('PAUSED','He is still in there.','RESUME',()=>{state='play';hideOv()})}}
@@ -3148,7 +3156,7 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();K[k]=1;audioInit();if
  if(k.startsWith('arrow')||k==' ')e.preventDefault()});
 addEventListener('keyup',e=>K[e.key.toLowerCase()]=0);addEventListener('blur',()=>{for(const k in K)K[k]=0});
 addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;
- if(VIEW3D&&Z3.fp&&state=='play'){/* first-person look; works with or without pointer lock */
+ if(VIEW3D&&state=='play'){/* first-person look; works with or without pointer lock */
   const mv=(e.movementX!==undefined);
   const dx=mv?e.movementX:e.clientX-(Z3.lmx==null?e.clientX:Z3.lmx);
   const dy=mv?e.movementY:e.clientY-(Z3.lmy==null?e.clientY:Z3.lmy);
@@ -3156,10 +3164,12 @@ addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;
   Z3.yaw+=cl(dx,-160,160)*Z3.sens;
   Z3.pitchFP=cl(Z3.pitchFP-cl(dy,-160,160)*Z3.sens*.8,-.95,.62)}});
 addEventListener('mousedown',e=>{audioInit();
- /* a click in first person also takes the pointer, which is what makes the look feel like a game */
- if(VIEW3D&&Z3.fp&&document.pointerLockElement==null&&OVC.requestPointerLock){try{OVC.requestPointerLock()}catch(err){}}
- if((e.target==cv||e.target==GLX.canvas||e.target==OVC)&&state=='play')throwHeld()});
-addEventListener('wheel',e=>{if(VIEW3D){Z3.dist=cl(Z3.dist*(e.deltaY<0?.92:1.086),6.5,32);return}ZOOM=cl(ZOOM*(e.deltaY<0?1.1:.91),12,60)},{passive:true});
+ const onGame=(e.target==cv||e.target==GLX.canvas||e.target==OVC||e.target==document.body||!e.target);
+ if(onGame&&state=='play')throwHeld();/* throw FIRST: a lock prompt must never swallow the click */
+ /* then ask for the pointer (look without dragging); a refusal is harmless */
+ if(VIEW3D&&onGame&&document.pointerLockElement==null&&GLC.requestPointerLock){
+  try{const r=GLC.requestPointerLock();if(r&&r.catch)r.catch(()=>{})}catch(err){}}});
+addEventListener('wheel',e=>{if(VIEW3D)return;ZOOM=cl(ZOOM*(e.deltaY<0?1.1:.91),12,60)},{passive:true});
 function start(){audioInit();MEM=freshMem();nnInit();/* PLAY AGAIN = a brand-new mind: catches, suspicion, heat map, net — everything resets */if(PCG.active)forgetMapGeometry();restoreBaseMap();resetPlayer();resetN();clearSearchState();hideOv();state='play';pickTask();say('Find the lockpick in the shed. Tomatoes grow in the garden.',4)}
 function startPCG(){const input=$('pcgSeed'),raw=String(input.value||'').trim();let seed;if(raw){if(!/^[0-9]{1,10}$/.test(raw)||Number(raw)<1||Number(raw)>4294967295){say('Seed must be an integer from 1 to 4294967295.',4);if(input.focus)input.focus();return}seed=Number(raw)>>>0}else seed=((Date.now()^Math.floor(Math.random()*0xffffffff))>>>0)||1;input.value=String(seed);audioInit();MEM=freshMem();nnInit();/* PCG PLAY = a brand-new mind too */let made=null;/* a small share of seeds just cannot pass route validation — instead of dead-ending the player, quietly walk the seed forward until one generates. The seed that actually loaded is shown back. */
 for(let tries=0;tries<32;tries++){try{made=makePCGMap(seed);break}catch(err){seed=(seed*1664525+1013904223)>>>0}}
@@ -3169,12 +3179,12 @@ $('go').onclick=start;$('pcg').onclick=()=>startPCG();$('pcgSeed').onkeydown=e=>
 /* ==========================================================================================
    3D VIEW — a real, dependency-free WebGL renderer for the SAME world.
    Nothing about the game logic changes: it reads G, FU, DR, ITEMS, P, N, CAMS, TRAPS … and
-   draws them as extruded geometry seen through a tilted chase camera. Press V to switch.
+   draws them as extruded geometry from the player's own eyes. Press V to switch.
    ========================================================================================== */
 const GLC=$('gl'),OVC=$('ov3'),OVX=OVC.getContext('2d');
-var VIEW3D=false;
-const Z3={fp:true,yaw:-PI/2,pitchFP:-.07,eyeH:1.58,eyeC:1.02,sens:.0026,fovFP:68*PI/180,
- dist:9.6,pitch:1.19,fov:46*PI/180,lift:.55,ty:1.3,tz:.12,eye:[0,10,20],tgt:[0,0,0],vp:new Float32Array(16),W:1,H:1,dpr:1,right:[1,0,0],up:[0,1,0],fwd:[0,0,-1]};
+var VIEW3D=false,FPKICK=0,dt3=1/60;
+const Z3={yaw:-PI/2,pitchFP:-.07,eyeH:1.58,eyeC:1.02,sens:.0026,fovFP:68*PI/180,
+ eye:[0,1.6,0],tgt:[0,1.6,-1],vp:new Float32Array(16),W:1,H:1,dpr:1,right:[1,0,0],up:[0,1,0],fwd:[0,0,-1]};
 const VSTR=11;/* pos3 · nrm3 · col3 · kind1 · alpha1 */
 const WALL_H=2.62,FENCE_H=.95;
 const GLX={canvas:GLC};
@@ -3284,40 +3294,20 @@ function m4look(o,e,c,up){
  o[12]=-(xx*e[0]+xy*e[1]+xz*e[2]);o[13]=-(yx*e[0]+yy*e[1]+yz*e[2]);o[14]=-(zx*e[0]+zy*e[1]+zz*e[2]);o[15]=1;return o}
 const _P=new Float32Array(16),_V=new Float32Array(16),VP=new Float32Array(16);
 /* ---------------- camera ---------------- */
+/* the ONLY 3D camera: eyes in the player's head, looking where he looks */
 function cam3(){
- if(Z3.fp){
-  /* FIRST PERSON: the eye sits in the player's head and looks where he is aiming */
-  const eH=P.crouch?Z3.eyeC:Z3.eyeH,bob=(K.w||K.a||K.s||K.d)?Math.sin(tm*10)*.022:0;
-  const cp=Math.cos(Z3.pitchFP),sp2=Math.sin(Z3.pitchFP);
-  Z3.eye=[P.x,eH+bob,P.y];
-  Z3.fwd=[Math.cos(Z3.yaw)*cp,sp2,Math.sin(Z3.yaw)*cp];
-  Z3.tgt=[P.x+Z3.fwd[0],eH+bob+Z3.fwd[1],P.y+Z3.fwd[2]];
-  const rl=Math.hypot(Z3.fwd[2],Z3.fwd[0])||1;
-  Z3.right=[-Z3.fwd[2]/rl,0,Z3.fwd[0]/rl];
-  Z3.up=[Z3.right[1]*Z3.fwd[2]-Z3.right[2]*Z3.fwd[1],Z3.right[2]*Z3.fwd[0]-Z3.right[0]*Z3.fwd[2],Z3.right[0]*Z3.fwd[1]-Z3.right[1]*Z3.fwd[0]];
-  m4persp(_P,Z3.fovFP,Z3.W/Math.max(1,Z3.H),.08,140);m4look(_V,Z3.eye,Z3.tgt,[0,1,0]);m4mul(VP,_P,_V);Z3.vp.set(VP);return}
- const p=Z3.pitch,d=Z3.dist,cy=Math.sin(p)*d,cz=Math.cos(p)*d;
- Z3.eye=[cam.x,cy+Z3.lift,cam.y+cz];
- Z3.tgt=[cam.x,Z3.ty,cam.y-Z3.tz*d];
- const f=[Z3.tgt[0]-Z3.eye[0],Z3.tgt[1]-Z3.eye[1],Z3.tgt[2]-Z3.eye[2]],fl=Math.hypot(f[0],f[1],f[2])||1;
- Z3.fwd=[f[0]/fl,f[1]/fl,f[2]/fl];
- let r=[-Z3.fwd[2],0,Z3.fwd[0]];const rl=Math.hypot(r[0],r[2])||1;Z3.right=[r[0]/rl,0,r[2]/rl];
+ const eH=P.crouch?Z3.eyeC:Z3.eyeH,bob=(K.w||K.a||K.s||K.d)?Math.sin(tm*10)*.022:0;
+ const cp=Math.cos(Z3.pitchFP),sp2=Math.sin(Z3.pitchFP);
+ Z3.eye=[P.x,eH+bob,P.y];
+ Z3.fwd=[Math.cos(Z3.yaw)*cp,sp2,Math.sin(Z3.yaw)*cp];
+ Z3.tgt=[P.x+Z3.fwd[0],eH+bob+Z3.fwd[1],P.y+Z3.fwd[2]];
+ const rl=Math.hypot(Z3.fwd[2],Z3.fwd[0])||1;
+ Z3.right=[-Z3.fwd[2]/rl,0,Z3.fwd[0]/rl];
  Z3.up=[Z3.right[1]*Z3.fwd[2]-Z3.right[2]*Z3.fwd[1],Z3.right[2]*Z3.fwd[0]-Z3.right[0]*Z3.fwd[2],Z3.right[0]*Z3.fwd[1]-Z3.right[1]*Z3.fwd[0]];
- m4persp(_P,Z3.fov,Z3.W/Math.max(1,Z3.H),.15,140);m4look(_V,Z3.eye,Z3.tgt,[0,1,0]);m4mul(VP,_P,_V);Z3.vp.set(VP)}
+ m4persp(_P,Z3.fovFP,Z3.W/Math.max(1,Z3.H),.06,140);m4look(_V,Z3.eye,Z3.tgt,[0,1,0]);m4mul(VP,_P,_V);Z3.vp.set(VP)}
 function proj(x,y,z){const m=Z3.vp,cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw<=.002)return null;
  const cx=m[0]*x+m[4]*y+m[8]*z+m[12],cy=m[1]*x+m[5]*y+m[9]*z+m[13];
  return[(cx/cw*.5+.5)*Z3.W,(1-(cy/cw*.5+.5))*Z3.H,cw]}
-function aimGround3D(py){py=py==null?0.04:py;const mx=mouse.x,my=mouse.y,nx=(mx/Z3.W)*2-1,ny=1-(my/Z3.H)*2,t=Math.tan(Z3.fov/2),asp=Z3.W/Math.max(1,Z3.H);
- const d=[Z3.fwd[0]+Z3.right[0]*nx*t*asp+Z3.up[0]*ny*t,Z3.fwd[1]+Z3.right[1]*nx*t*asp+Z3.up[1]*ny*t,Z3.fwd[2]+Z3.right[2]*nx*t*asp+Z3.up[2]*ny*t];
- if(Math.abs(d[1])<1e-4)return null;const tt=(py-Z3.eye[1])/d[1];if(tt<=0)return null;
- return[Z3.eye[0]+d[0]*tt,Z3.eye[2]+d[2]*tt]}
-/* the mouse is unprojected onto a horizontal plane through the player, so aiming a throw in 3D
-   feels identical to aiming in 2D — the crosshair sits on the floor under the cursor */
-function aim3D(){const mx=mouse.x,my=mouse.y,nx=(mx/Z3.W)*2-1,ny=1-(my/Z3.H)*2,t=Math.tan(Z3.fov/2),asp=Z3.W/Math.max(1,Z3.H);
- const d=[Z3.fwd[0]+Z3.right[0]*nx*t*asp+Z3.up[0]*ny*t,Z3.fwd[1]+Z3.right[1]*nx*t*asp+Z3.up[1]*ny*t,Z3.fwd[2]+Z3.right[2]*nx*t*asp+Z3.up[2]*ny*t];
- const py=.55,dy=d[1];let hx=cam.x,hy=cam.y;
- if(Math.abs(dy)>1e-4){const tt=(py-Z3.eye[1])/dy;if(tt>0){hx=Z3.eye[0]+d[0]*tt;hy=Z3.eye[2]+d[2]*tt}}
- return Math.atan2(hy-P.y,hx-P.x)}
 /* ---------------- static world mesh ---------------- */
 const FURN_H={couch:.8,tv:.6,table:.74,shelf:1.85,wardrobe:1.95,sink:.9,stove:.92,counter:.92,fridge:1.9,coat:1.55,mirror:1.7,bed:.62,night:.6,desk:.78,toilet:.55,tub:.62,bench:.92,rack:1.6,mbox:1.2,trash:.85,toolbox:.5,radio:.3,broom:1.5,plant:.75,chair:.86,tree:2.6};
 const FURN_C={couch:'#4f7fd1',tv:'#1d1f22',table:'#b07a45',shelf:'#8a5f38',wardrobe:'#8a5f38',sink:'#cfe4ec',stove:'#9aa1a8',counter:'#e2dbca',fridge:'#f2f2f2',coat:'#5a7d3a',mirror:'#d8f4ff',bed:'#e9e4f0',night:'#b07a8a',desk:'#a97a44',toilet:'#ffffff',tub:'#dff4ff',bench:'#b98b46',rack:'#6a6a58',mbox:'#3a6fd9',trash:'#5b6068',toolbox:'#c33',radio:'#2c4a62',broom:'#b08a5a',plant:'#4e9a4e',chair:'#b5834a',tree:'#3f9a4a'};
@@ -3405,7 +3395,7 @@ function buildStaticWorld(){
  /* upstairs is a separate slab of the same map: give the 3D view ground to stand on there,
     and it is clipped away entirely when you are downstairs */
  /* CEILINGS: first person is indoors, so cap the rooms. One quad per room, lit from below.
-    They are only drawn in first person, so the chase camera keeps its dollhouse view. */
+    One quad per room, drawn from underneath. */
  SMC.n=0;
  for(const r of RMC){const x0=r[0],y0=r[1],x1=r[2]+1,y1=r[3]+1;
   if(!(x1>x0&&y1>y0))continue;
@@ -3478,31 +3468,18 @@ function figure(m,x,z,ang,pal,crouch,opts){opts=opts||{};
 function drawFigures(m,t){
  if(!P)return;
  const pd=state=='play'?(P.aim||0):-PI/2;
- if(!P.hidden&&Z3.fp){
+ if(!P.hidden){
   /* FIRST PERSON: you see your own hand and whatever it is carrying, never your own back */
   const a=P.aim||0,eH=P.crouch?Z3.eyeC:Z3.eyeH,hi=held();
   const rx=-Math.sin(a),rz=Math.cos(a);
   const sway=(K.w||K.a||K.s||K.d)?Math.sin(tm*5.5)*.012:0;
   /* forearm + fist: far enough from the eye to read as a hand, tucked low and to the right */
-  const fwdK=.42,sideK=.26;
-  const hx=P.x+Math.cos(a)*fwdK-Math.sin(a)*sideK,hz=P.y+Math.sin(a)*fwdK+Math.cos(a)*sideK,hy=eH-.46+sway;
+  FPKICK=Math.max(0,FPKICK-dt3);
+  const kick=FPKICK*.5,fwdK=.42-kick*.5,sideK=.26;
+  const hx=P.x+Math.cos(a)*fwdK-Math.sin(a)*sideK,hz=P.y+Math.sin(a)*fwdK+Math.cos(a)*sideK,hy=eH-.46+sway+FPKICK*.16;
   obox(m,hx-Math.cos(a)*.20,hz-Math.sin(a)*.20,a,-.032,-.032,.032,.032,hy-.075,hy-.02,col('#42506a'),2,1);
   obox(m,hx,hz,a,-.038,-.042,.038,.042,hy-.045,hy+.005,col('#e8bb92'),2,1);
   if(hi){itemBox(m,hx+Math.cos(a)*.02,hz+Math.sin(a)*.02,hy-.03,hi.k,a,1)}
- }else if(!P.hidden){
-  /* the floor shadow sells the 3D more than any amount of detail */
-  disc(m,P.x,P.y,.4,hexA('#000000',.26),1,14,.045);
-  disc(m,P.x,P.y,.33,hexA('#9fd8ff',.34),1,18,.05);
-  const bob=(K.w||K.a||K.s||K.d)?Math.abs(Math.sin(tm*10))*.03:0;
-  const pal={skin:'#f0c9a0',shirt:P.slow>0?'#c76b62':'#3f7fd1',pants:'#2b3a52',hair:'#43301f'};
-  figure(m,P.x,P.y-.0+0,P.aim||0,pal,P.crouch,{h:1+bob,hat:P.crouch?null:null});
-  const hi=held();
-  if(hi){const hx=P.x+Math.cos(P.aim)*.34,hy=P.y+Math.sin(P.aim)*.34;itemBox(m,hx,hy,.62,hi.k,hi.o||0,1)}
-  {const a0=(P.aim||0)-.32,a1=(P.aim||0)+.32,pts=[[P.x,P.y]];
-   for(let i=0;i<=6;i++){const a=a0+(a1-a0)*i/6;pts.push([P.x+Math.cos(a)*1.5,P.y+Math.sin(a)*1.5])}
-   fan(m,P.x,P.y,pts,[.62,.85,1,.14],1,.042)}
-  /* aim guide on the floor: the 3D equivalent of the 2D crosshair line */
-  if(hi){for(let i=1;i<8;i++){const d=i*.8;disc(m,P.x+Math.cos(P.aim)*d,P.y+Math.sin(P.aim)*d,.055,hexA('#ffffff',.22),1,6,.02)}}
  }
  if(N){
   const chase=N.mode=='chase';
@@ -3561,6 +3538,9 @@ function drawDyn3D(){
   disc(t,it.x,it.y,.30,cc.concat([.16]),1,16,sy+.010)}
  /* thrown things in flight */
  for(const p of PR){if(p.dead)continue;const c=IT3[p.k]?IT3[p.k].c:(IC[p.k]||'#bbb');
+  if(p.own=='p'){/* a short tracer, so a throw is always SEEN even when it leaves the view fast */
+   for(let i=1;i<=4;i++){const f2=i*.05,tx=p.x-p.vx*f2,ty=p.y-p.vy*f2,tz=p.z-(p.vz*f2-.5*12*f2*f2);
+    if(tz<.02)continue;disc(t,tx,ty,.05+i*.012,hexA('#ffffff',.34-i*.07),1,6,tz)}}
   itemBox(m,p.x,p.y,p.z,p.k,Math.atan2(p.vy,p.vx),1);
   disc(m,p.x,p.y,.1,hexA('#000000',.3),1,7,.045)}
  /* dust puffs */
@@ -3604,6 +3584,7 @@ function glUniforms(){
 }
 function render3D(dt){
  if(!P)return;
+ dt3=dt;
  if(!glInit()){/* no WebGL: fall back rather than showing a black screen */VIEW3D=false;cv.style.display='block';GLC.style.display='none';OVC.style.display='none';$('viewchip').textContent='VIEW 2D · no WebGL';draw(dt);return}
  const w=innerWidth,h=innerHeight,dp=Math.min(devicePixelRatio||1,2);
  if(Z3.W!=w||Z3.H!=h||Z3.dpr!=dp||GLC.width!=(w*dp|0)){Z3.W=w;Z3.H=h;Z3.dpr=dp;GLC.width=w*dp|0;GLC.height=h*dp|0;OVC.width=w*dp|0;OVC.height=h*dp|0;GL.gl.viewport(0,0,GLC.width,GLC.height)}
@@ -3617,7 +3598,7 @@ function render3D(dt){
  gl.enable(gl.DEPTH_TEST);gl.depthMask(true);gl.enable(gl.CULL_FACE);
  glUniforms();
  glMesh(GL.bs,SM);
- if(Z3.fp){/* indoors: the clipped ceiling of whichever storey you are on */gl.disable(gl.CULL_FACE);glMesh(GL.bc,SMC);gl.enable(gl.CULL_FACE)}
+ {/* the clipped ceiling of whichever storey you are on */gl.disable(gl.CULL_FACE);glMesh(GL.bc,SMC);gl.enable(gl.CULL_FACE)}
  if(!PCG.active&&P&&P.y>=FLOOR_Y){/* the upstairs slab floats on its own ground plane */
   gl.uniform1f(GL.loc.uC0,-1000);gl.uniform1f(GL.loc.uC1,1000);glMesh(GL.br,SMR);glUniforms()}
  drawDyn3D();
@@ -3648,24 +3629,16 @@ function overlay3D(){
   if(sub){OVX.font='600 10px system-ui,sans-serif';OVX.fillStyle='rgba(255,255,255,.72)';OVX.fillText(sub,p[0],p[1]+10)}
  };
  if(N&&!N.sleeping)tag(N.x,2.05,N.y,'HIM',N.mode=='chase'?'#ff8a7a':'#ffd23f',SHOW.all?(N.mode+(N.st?' · '+N.st:'')):null);
- if(P&&!P.hidden&&!Z3.fp)tag(P.x,1.75,P.y,'YOU','#9fd8ff',P.crouch?'crouched':null);
- /* crosshair: the mouse in the chase camera, dead centre in first person */
- const mx=Z3.fp?w/2:mouse.x,my=Z3.fp?h/2:mouse.y;
+ /* crosshair sits dead centre: you aim with the camera */
+ const mx=w/2,my=h/2;
  OVX.strokeStyle='rgba(0,0,0,.5)';OVX.lineWidth=3;OVX.beginPath();OVX.arc(mx,my,8,0,7);OVX.stroke();
  OVX.strokeStyle='rgba(255,255,255,.92)';OVX.lineWidth=1.6;OVX.beginPath();OVX.arc(mx,my,8,0,7);OVX.stroke();
  OVX.beginPath();OVX.moveTo(mx-13,my);OVX.lineTo(mx-4,my);OVX.moveTo(mx+4,my);OVX.lineTo(mx+13,my);
  OVX.moveTo(mx,my-13);OVX.lineTo(mx,my-4);OVX.moveTo(mx,my+4);OVX.lineTo(mx,my+13);OVX.stroke();
- /* where the crosshair meets the floor — the 3D version of the 2D aim line (chase cam only) */
- if(!Z3.fp){const gp=aimGround3D(.04);
-  if(gp){const q=proj(gp[0],.04,gp[1]);
-   if(q){const r=Math.max(7,26/(q[2]||8));
-    OVX.strokeStyle='rgba(255,255,255,.55)';OVX.lineWidth=1.4;OVX.beginPath();OVX.ellipse(q[0],q[1],r,r*.42,0,0,7);OVX.stroke();
-    OVX.fillStyle='rgba(255,255,255,.5)';OVX.beginPath();OVX.arc(q[0],q[1],1.8,0,7);OVX.fill();
-    const pc=proj(P.x,.04,P.y);if(pc){OVX.strokeStyle='rgba(159,216,255,.16)';OVX.lineWidth=1;OVX.beginPath();OVX.moveTo(pc[0],pc[1]);OVX.lineTo(q[0],q[1]);OVX.stroke()}}}}
  /* the throw arc lands where the crosshair points, so aiming is honest */
- if(held()&&P&&!P.hidden){const a=Z3.fp?(P.aim||0):aim3D();
-  const oy=Z3.fp?(P.crouch?Z3.eyeC:Z3.eyeH)-.2:0.1;
-  for(let i=1;i<=10;i++){const d=i*.85,p=proj(P.x+Math.cos(a)*d,oy+(Z3.fp?-.16*(i/10):.1*Math.sin(i/10*PI)),P.y+Math.sin(a)*d);
+ if(held()&&P&&!P.hidden){const a=P.aim||0;
+  const oy=(P.crouch?Z3.eyeC:Z3.eyeH)-.22;
+  for(let i=1;i<=10;i++){const d=i*.85,p=proj(P.x+Math.cos(a)*d,oy-.05*(i/10),P.y+Math.sin(a)*d);
    if(!p)continue;OVX.fillStyle='rgba(255,255,255,'+(.5-i*.04)+')';OVX.beginPath();OVX.arc(p[0],p[1],2.2,0,7);OVX.fill()}}
  /* off-screen pointer to him when he is behind you */
  if(N){const p=proj(N.x,1.1,N.y);if(!p||p[0]<0||p[0]>w||p[1]<0||p[1]>h){
@@ -3684,8 +3657,8 @@ function toggleView(){
   if(!glInit()){say('This browser has no WebGL — staying in 2D.',3);return}
   VIEW3D=true;buildStaticWorld();glUpload(GL.bs,SM,false);glUpload(GL.br,SMR,false);glUpload(GL.bc,SMC,false);GL.sver=1;wSig=worldSig();
   cv.style.display='none';GLC.style.display='block';OVC.style.display='block';
-  if(btn)btn.textContent='VIEW: 3D';chip.textContent=Z3.fp?'VIEW 3D · FIRST PERSON · V / B':'VIEW 3D · chase cam · V / B';GL.sver=null;
-  say('3D — first person. Move with WASD, look with the mouse. B for the chase camera.',3);
+  if(btn)btn.textContent='VIEW: 3D';chip.textContent='VIEW 3D · WASD + MOUSE · V';GL.sver=null;
+  say('3D — first person. WASD to move, mouse to look, click or F to throw.',3);
  }else{
   VIEW3D=false;GLC.style.display='none';OVC.style.display='none';cv.style.display='block';
   if(btn)btn.textContent='VIEW: 2D';chip.textContent='VIEW 2D · press V';
@@ -3703,7 +3676,7 @@ window.__g={/* everything a smoke test needs to look at the SAME game the 3D vie
  get view3d(){return VIEW3D},get SMR(){return SMR},get SMC(){return SMC},get P(){return P},get N(){return N},get G(){return G},W,H,FLOOR_Y,LVL,
  get state(){return state},get tm(){return tm},get FU(){return FU},get K(){return K},get SHOW(){return SHOW},get mouse(){return mouse},get cam(){return cam},get bel(){return bel},get SPL(){return SPL},get ITEMS(){return ITEMS},get CAMS(){return CAMS},get PCG(){return PCG},get MEM(){return MEM},
  makePCGMap,restoreBaseMap,resetPlayer,resetN,pickTask,tick,draw,render3D,overlay3D,toggleView,glInit,
- buildStaticWorld,worldSig,SM,DM,TM,get gl(){return GL},get Z3(){return Z3},proj,aim3D,start,startPCG,
+ buildStaticWorld,worldSig,SM,DM,TM,get gl(){return GL},get Z3(){return Z3},proj,start,startPCG,throwHeld,get PR(){return PR},
  netAudit,nnFwd,freshMem,mood,findPath,distField
 };
 </script></body></html>
