@@ -3616,6 +3616,10 @@ function toggleView(){
 if(typeof document!=='undefined')addEventListener('resize',()=>{GL.sver=null});
 /* ---------------- wiring + exports ---------------- */
 if($('viewbtn'))$('viewbtn').onclick=e=>{e.preventDefault();toggleView()};
+/* KICK OFF THE RENDER LOOP. frame() re-queues itself, so it has to be queued once from outside —
+   without this the menu still appears (it is plain HTML) but nothing ever draws or ticks. */
+lt=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+requestAnimationFrame(frame);
 /* every frame the 3D path already resets the overlay; keep the chip honest after a WebGL fallback */
 window.__g={/* everything a smoke test needs to look at the SAME game the 3D view is drawing */
  get view3d(){return VIEW3D},get SMR(){return SMR},get P(){return P},get N(){return N},get G(){return G},W,H,FLOOR_Y,LVL,
