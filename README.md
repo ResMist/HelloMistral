@@ -6,6 +6,14 @@
 Open it directly in a browser and press **PLAY** (or **PCG PLAY** with a seed for a
 procedurally generated estate).
 
+To serve it locally with caching disabled (a stale cached copy otherwise looks exactly
+like a broken build), use the bundled server:
+
+```bash
+python3 dev/serve.py          # http://localhost:8000, binds 0.0.0.0
+python3 dev/serve.py 9000     # another port
+```
+
 It renders the same world two ways and you can switch any time with **V** or the
 **VIEW** button on the menu:
 
