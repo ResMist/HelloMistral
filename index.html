@@ -1,6 +1,6 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>HelloMistral — 2D / 3D</title><style>:root{--bg:#7fc66a;--fg:#1b2a41;box-sizing:border-box}@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#2c4a35}}:root[data-theme=dark]{--bg:#2c4a35}body,html{height:100%;margin:0;overflow:hidden;background:var(--bg);font:13px system-ui,sans-serif;color:#fff}canvas{position:fixed;inset:0;width:100%;height:100%}.p{position:fixed;background:#0b0e13d9;backdrop-filter:blur(7px);border:1px solid #ffffff1f;border-radius:12px;box-shadow:0 6px 22px #0009;padding:8px 12px;line-height:1.5;pointer-events:none;z-index:3}#hud{left:10px;top:calc(10px + env(safe-area-inset-top,0px));max-width:300px}#dbg{right:10px;top:calc(10px + env(safe-area-inset-top,0px));min-width:230px;font-size:12px}#msg{left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));font:700 18px system-ui;text-align:center;background:#0b0e13e6;border:1px solid #ffd23f44;border-radius:999px;padding:9px 22px;text-shadow:0 2px 6px #000;transition:opacity .2s}#inv{left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;padding:6px 8px}.slot{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:58px;height:30px;border:2px solid #ffffff55;border-radius:6px;background:#0008;font-size:11px}.slot b{opacity:.55;font-size:10px}.slot.sel{border-color:#ffd23f;background:#000c;color:#ffd23f}.bar{display:inline-block;height:6px;background:#e8c04a;border-radius:3px;vertical-align:middle}#ov{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(#7fd0ffdd,#bff0a0ee);color:#1b2a41;text-align:center;padding:20px}#ov h1{font-size:clamp(34px,7vw,66px);margin:0;color:#ff7a1a;text-shadow:3px 3px 0 #1b2a41}#row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}#row label{font-weight:700}#pcgSeed{font:700 16px system-ui;width:150px;box-sizing:border-box;padding:11px 9px;border:2px solid #1b2a41;border-radius:10px}#pcgSeedHelp{font-size:11px;opacity:.75;max-width:110px}#ov button{font:700 20px system-ui;padding:12px 32px;border:4px solid #1b2a41;border-radius:14px;background:#ffd23f;cursor:pointer;color:#1b2a41;transition:transform .12s,background .12s,box-shadow .12s}#ov button:hover{background:#ff7a1a;transform:translateY(-2px);box-shadow:0 6px 18px #0006}#forget{font-size:15px!important;padding:10px 20px!important;background:#ff6b6b!important;color:#fff!important}#forget:hover{background:#e8453a!important}#ov small{max-width:640px;line-height:1.6}#memline{font-size:12px;opacity:.75}#gl,#ov3{display:none}#ov3{pointer-events:none}#viewchip{position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:4;font:700 11px system-ui;letter-spacing:.06em;padding:6px 10px;border-radius:999px;border:1px solid #ffffff33;background:#0b0e13d9;color:#ffd23f;pointer-events:none}#viewbtn{font-size:15px!important;padding:10px 20px!important;background:#7cc7ff!important;color:#1b2a41!important}#viewbtn:hover{background:#4fa9e8!important}</style></head><body><canvas id="c"></canvas><canvas id="gl"></canvas><canvas id="ov3"></canvas><div id="hud" class="p"></div><div id="dbg" class="p"></div><div id="inv" class="p"></div><div id="msg" class="p" style="display:none"></div><div id="viewchip">VIEW 2D · press V</div><div id="ov"><h1>HELLO MISTRAL</h1><div id="ovt">Steal the SECRET from the vault. Get the lockpick from the shed, the red key from the fridge, the blue key from the study. He has a life, a routine, and a living memory: he tracks a probability map of where you could be, cuts you off by true path distance, learns your routes, hours, hiding spots and even the exact paths you run during chases. His memory lives only inside the current game: NOTHING is saved between games or tabs.</div><div id="row"><button id="go">PLAY</button><label for="pcgSeed">Map seed</label><input id="pcgSeed" type="text" inputmode="numeric" pattern="[0-9]{1,10}" maxlength="10" aria-describedby="pcgSeedHelp" placeholder="random"><span id="pcgSeedHelp">1–4294967295; blank = random</span><button id="pcg" title="Generate a different estate footprint, rooms, yard, outbuildings, and objective locations" style="background:#47cf9b">PCG PLAY</button><button id="viewbtn" title="Switch between the 2D map view and the 3D world view (also: V)">VIEW: 2D</button><button id="forget">🧹 MAKE HIM FORGET EVERYTHING</button></div><div id="memline"></div><small>WASD move · Shift sprint (loud) · C crouch (quiet) · E pick up / hold to open · hold E to leave a hiding spot · Click or F throw (tomatoes: pick them from the garden!) · Q drop · 1-4 inventory slots · wheel zoom ·<b>P 🧠 X-RAY: heat maps, belief map, path, plans & his neural net</b>· <b>V</b> toggle 2D ↔ 3D — 3D is first person: WASD to walk, mouse to look, click/F to throw · Esc pause</small></div><script>'use strict';
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>HelloMistral — 2D / 3D</title><style>:root{--bg:#7fc66a;--fg:#1b2a41;box-sizing:border-box}@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#2c4a35}}:root[data-theme=dark]{--bg:#2c4a35}body,html{height:100%;margin:0;overflow:hidden;background:var(--bg);font:13px system-ui,sans-serif;color:#fff}canvas{position:fixed;inset:0;width:100%;height:100%}.p{position:fixed;background:#0b0e13d9;backdrop-filter:blur(7px);border:1px solid #ffffff1f;border-radius:12px;box-shadow:0 6px 22px #0009;padding:8px 12px;line-height:1.5;pointer-events:none;z-index:3}#hud{left:10px;top:calc(10px + env(safe-area-inset-top,0px));max-width:300px}#dbg{right:10px;top:calc(10px + env(safe-area-inset-top,0px));min-width:230px;font-size:12px}#msg{left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));font:700 18px system-ui;text-align:center;background:#0b0e13e6;border:1px solid #ffd23f44;border-radius:999px;padding:9px 22px;text-shadow:0 2px 6px #000;transition:opacity .2s}#inv{left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;padding:6px 8px}.slot{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:58px;height:30px;border:2px solid #ffffff55;border-radius:6px;background:#0008;font-size:11px}.slot b{opacity:.55;font-size:10px}.slot.sel{border-color:#ffd23f;background:#000c;color:#ffd23f}.bar{display:inline-block;height:6px;background:#e8c04a;border-radius:3px;vertical-align:middle}#ov{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(#7fd0ffdd,#bff0a0ee);color:#1b2a41;text-align:center;padding:20px}#ov h1{font-size:clamp(34px,7vw,66px);margin:0;color:#ff7a1a;text-shadow:3px 3px 0 #1b2a41}#row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}#row label{font-weight:700}#pcgSeed{font:700 16px system-ui;width:150px;box-sizing:border-box;padding:11px 9px;border:2px solid #1b2a41;border-radius:10px}#pcgSeedHelp{font-size:11px;opacity:.75;max-width:110px}#ov button{font:700 20px system-ui;padding:12px 32px;border:4px solid #1b2a41;border-radius:14px;background:#ffd23f;cursor:pointer;color:#1b2a41;transition:transform .12s,background .12s,box-shadow .12s}#ov button:hover{background:#ff7a1a;transform:translateY(-2px);box-shadow:0 6px 18px #0006}#forget{font-size:15px!important;padding:10px 20px!important;background:#ff6b6b!important;color:#fff!important}#forget:hover{background:#e8453a!important}#ov small{max-width:640px;line-height:1.6}#memline{font-size:12px;opacity:.75}#gl,#ov3{display:none}#ov3{pointer-events:none}#viewchip{position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:4;font:700 11px system-ui;letter-spacing:.06em;padding:6px 10px;border-radius:999px;border:1px solid #ffffff33;background:#0b0e13d9;color:#ffd23f;pointer-events:none}#viewbtn{font-size:15px!important;padding:10px 20px!important;background:#7cc7ff!important;color:#1b2a41!important}#viewbtn:hover{background:#4fa9e8!important}</style></head><body><canvas id="c"></canvas><canvas id="gl"></canvas><canvas id="ov3"></canvas><div id="hud" class="p"></div><div id="dbg" class="p"></div><div id="inv" class="p"></div><div id="msg" class="p" style="display:none"></div><div id="viewchip">VIEW 2D · press V</div><div id="ov"><h1>HELLO MISTRAL</h1><div id="ovt">Steal the SECRET from the vault. Get the lockpick from the shed, the red key from the fridge, the blue key from the study. He has a life, a routine, and a living memory: he tracks a probability map of where you could be, cuts you off by true path distance, learns your routes, hours, hiding spots and even the exact paths you run during chases. His memory lives only inside the current game: NOTHING is saved between games or tabs.</div><div id="row"><button id="go">PLAY</button><label for="pcgSeed">Map seed</label><input id="pcgSeed" type="text" inputmode="numeric" pattern="[0-9]{1,10}" maxlength="10" aria-describedby="pcgSeedHelp" placeholder="random"><span id="pcgSeedHelp">1–4294967295; blank = random</span><button id="pcg" title="Generate a new estate: an L/T-shaped house with a wing, outbuildings, a walled front garden with a gate, hedge runs, tree groves, more rooms, windows on every long wall, and goals placed by real walking distance" style="background:#47cf9b">PCG PLAY</button><button id="viewbtn" title="Switch between the 2D map view and the 3D world view (also: V)">VIEW: 2D</button><button id="forget">🧹 MAKE HIM FORGET EVERYTHING</button></div><div id="memline"></div><small>WASD move · Shift sprint (loud) · C crouch (quiet) · E pick up / hold to open · hold E to leave a hiding spot · Click or F throw (tomatoes: pick them from the garden!) · Q drop · 1-4 inventory slots · wheel zoom ·<b>P 🧠 X-RAY: heat maps, belief map, path, plans & his neural net</b>· <b>V</b> toggle 2D ↔ 3D — 3D is first person: WASD to walk, mouse to look, click/F to throw · Esc pause</small></div><script>'use strict';
 /* build stamp: shown in the corner so a stale cached copy is impossible to mistake */
-const BUILD='b5';
+const BUILD='b6';
 const W=56,H=57,PI=Math.PI,$=i=>document.getElementById(i),rnd=(a,b)=>a+Math.random()*(b-a),cl=(v,a,b)=>v<a?a:v>b?b:v,dist=(a,b,c,d)=>Math.hypot(a-c,b-d);
 /* ============================================================
    PRIORITY LADDER — what may interrupt what.
@@ -1788,55 +1788,770 @@ function pcgPartitionEstate(rand,box){
 }
 /* PCG_ENGINE_END */
 
-function makePCGMap(seed){restoreBaseMap();forgetMapGeometry();seed=(seed>>>0)||1;const rand=mapRng(seed),ri=n=>Math.floor(rand()*n);for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++)G[y][x]=',';FU.length=0;const x0=10+ri(4),x1=x0+29+ri(6),y0=3+ri(4),y1=26+ri(4);for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)G[y][x]=(x==x0||x==x1||y==y0||y==y1)?'#':'.';
- const frontX=x0+4+ri(Math.max(1,x1-x0-7));G[y1][frontX]='D';PCG.spawn=[frontX+.5,y1+2.5];PCG.estate={house:{x:x0,y:y0,w:x1-x0+1,h:y1-y0+1,front:[frontX,y1]},shed:null,vault:null};
- const shedY=7+ri(18),sx=2,sy=shedY,ex=7,ey=sy+4;for(let y=sy;y<=ey;y++)for(let x=sx;x<=ex;x++)G[y][x]=(x==sx||x==ex||y==sy||y==ey)?'#':'.';G[sy+2][ex]='D';PCG.estate.shed={x:sx,y:sy,w:ex-sx+1,h:ey-sy+1};
- const vx=48,vy=20+ri(7),vex=53,vey=vy+5;for(let y=vy;y<=vey;y++)for(let x=vx;x<=vex;x++)G[y][x]=(x==vx||x==vex||y==vy||y==vey)?'#':'.';G[vy+2][vx]='B';PCG.estate.vault={x:vx,y:vy,w:vex-vx+1,h:vey-vy+1};
- PCG_GOALS.splice(0,PCG_GOALS.length);const layout=pcgPartitionEstate(rand,[x0+1,y0+1,x1-1,y1-1]),leaves=layout.leaves;let doorsBuilt=layout.cuts+3;const inDoors=[];for(let y=y0+1;y<y1;y++)for(let x=x0+1;x<x1;x++)if(G[y][x]=='D')inDoors.push([x,y]);
- const used=[],roomLabels=['Living Room','Kitchen','Dining Room','Bedroom','Study','Bathroom','Workshop','Library','Sunroom','Music Room','Pantry','Lounge','Foyer','Studio','Guest Room'];for(let i=roomLabels.length-1;i>0;i--){const j=ri(i+1);[roomLabels[i],roomLabels[j]]=[roomLabels[j],roomLabels[i]]}const kitchenIndex=pcgRoomIndexForRole(layout.rooms,'kitchen',rand,ri(leaves.length)),studyIndex=pcgRoomIndexForRole(layout.rooms,'study',rand,(kitchenIndex+1)%leaves.length,[kitchenIndex]),entryIndex=pcgRoomIndexForRole(layout.rooms,'entry',rand,0,[kitchenIndex,studyIndex]),destinationIndex=pcgRoomIndexForRole(layout.rooms,'destination',rand,leaves.length-1,[kitchenIndex,studyIndex,entryIndex]),studyBox=leaves[studyIndex];const lockCandidate=inDoors.find(([x,y])=>[[x+1,y],[x-1,y],[x,y+1],[x,y-1]].some(([a,b])=>a>=studyBox[0]&&a<=studyBox[2]&&b>=studyBox[1]&&b<=studyBox[3]&&G[b][a]=='.')),lockDoor=lockCandidate||(inDoors.length?inDoors[ri(inDoors.length)]:null);if(lockDoor)G[lockDoor[1]][lockDoor[0]]='L';roomLabels[kitchenIndex]='Kitchen';roomLabels[studyIndex]='Study';roomLabels[entryIndex]='Foyer';roomLabels[destinationIndex]='Conservatory';const roomRecords=leaves.map((b,i)=>[b[0],b[1],b[2],b[3],['#e6cf9f','#d9e8e4','#ead9b0','#dcdcea','#eed6e4','#d9c39a','#cde6f2'][i%7],roomLabels[i%roomLabels.length]]);RMC.splice(0,RMC.length,[vx+1,vy+1,vex-1,vey-1,'#8d97a8','Vault'],[sx+1,sy+1,ex-1,ey-1,'#dccaa6','Shed'],...roomRecords);
- const pickRoomCell=(roomIndex)=>{let p=pcgRoomCell(leaves[roomIndex%leaves.length],rand,used);if(p)used.push(p);return p};let red=pickRoomCell(kitchenIndex),blue=pickRoomCell(studyIndex);if(!red)red=pcgRoomCell(leaves[0],rand,used);if(!blue)blue=pcgRoomCell(leaves[leaves.length-1],rand,used);const tool=[sx+2.5,sy+2.5],secret=[vx+3.5,vy+3.5];CT[0].x=red[0];CT[0].y=red[1];CT[1].x=blue[0];CT[1].y=blue[1];CT[2].x=tool[0];CT[2].y=tool[1];SECRET.x=secret[0];SECRET.y=secret[1];SECRET.got=0;
- const floor=[];for(const b of leaves)for(let y=b[1]+1;y<b[3];y++)for(let x=b[0]+1;x<b[2];x++)if(G[y][x]=='.')floor.push([x+.5,y+.5]);const itemCells=floor.filter(q=>{const x=q[0]|0,y=q[1]|0;return G[y-1][x]=='#'||G[y+1][x]=='#'});/* props sit AGAINST a wall, like they are set down on furniture — never dumped mid-floor */if(!itemCells.length)itemCells.push(...floor.slice(0,Math.max(1,ITEMS.length)));ITEMS.forEach((it,i)=>{const q=itemCells[(i*5+2)%itemCells.length];it.x=q[0];it.y=q[1];it.hx=q[0];it.hy=q[1];it.z=0;it.vx=0;it.vy=0;it.vz=0;it.fly=0;it.ox=0;it.oy=0});const hideA=pcgRoomCell(leaves[ri(leaves.length)],rand,[...used,red,blue]),hideB=pcgRoomCell(leaves[ri(leaves.length)],rand,[...used,red,blue,hideA]);if(hideA&&hideB){HIDES.splice(0,HIDES.length,{x:hideA[0],y:hideA[1],ex:hideA[0],ey:hideA[1]+1,l:'in the wardrobe'},{x:hideB[0],y:hideB[1],ex:hideB[0],ey:hideB[1]-1,l:'under the bed'})}
- const npc=pcgRoomCell(leaves[ri(leaves.length)],rand,[...used,red,blue,hideA,hideB]);PCG.npcSpawn=npc||[(x0+x1)/2+.5,(y0+y1)/2+.5];
- const winPts=[[x0+2,y0],[x1-2,y0],[x0,y0+Math.floor((y1-y0)/2)],[x1,y0+Math.floor((y1-y0)/2)]];WINS.splice(0,WINS.length,...winPts);for(const q of winPts)G[q[1]][q[0]]='W';
- const gardenX=cl(frontX-1,3,W-5),gardenY=y1+4;PL.forEach((p,i)=>{p.x=gardenX+(i%3);p.y=gardenY+Math.floor(i/3)*2;if(G[p.y]&&G[p.y][p.x]==',')G[p.y][p.x]='T'});
- const garden=PL.map(p=>[p.x+.5,p.y+.5]),outside=[frontX+.5,y1+1.5];PCG.spawn=[outside[0],y1+2.5];
- const stationCells=floor.filter(q=>dist(q[0],q[1],...red)>2&&dist(q[0],q[1],...blue)>2);for(const k of Object.keys(ST)){const old=BASE_ST[k]||[];const arr=ST[k];arr.length=0;for(let i=0;i<Math.max(1,old.length);i++){let q;if(k=='shed')q=[sx+3.5,sy+2.5];else if(k=='garden')q=garden[i%garden.length];else if(k=='gate'||k=='front')q=outside;else if(k=='window')q=[(winPts[i%winPts.length][0]+.5),(winPts[i%winPts.length][1]+.5)];else if(k=='streetlight')q=[frontX+.5,y1+5.5];else if(k=='patio')q=[frontX+.5,y1-1.5];else{q=stationCells.length?stationCells[ri(stationCells.length)]:floor[ri(floor.length)]}arr.push(q.slice())}}
- ST.shed.splice(0,ST.shed.length,[sx+3.5,sy+2.5]);ST.garden.splice(0,ST.garden.length,...garden.slice(0,3));ST.gate.splice(0,ST.gate.length,outside);ST.front.splice(0,ST.front.length,[frontX+.5,y1-.5]);
- {const r=(ST.radio||[])[0];if(r){RADIO.x=r[0];RADIO.y=r[1]}const t=(ST.tv||[])[0];if(t){TVX=t[0];TVY=t[1]}const a=(ST.night||[])[0];if(a){ALX=a[0];ALY=a[1]}if(MEM.front)G[y1][frontX]='L'}/* a lock he changed survives map generation */
- const bbox=[x0,y0,x1,y1];PCG.rooms=leaves.map((r,i)=>({x:r[0],y:r[1],w:r[2]-r[0]+1,h:r[3]-r[1]+1,color:roomRecords[i][4],name:roomRecords[i][5],role:layout.rooms[i].role,graphDistance:layout.rooms[i].graphDistance,parentRoom:layout.rooms[i].parentRoom}));PCG_GOALS.push([CT[0].x,CT[0].y],[CT[1].x,CT[1].y],[CT[2].x,CT[2].y],[PCG.npcSpawn[0],PCG.npcSpawn[1]],...HIDES.map(h=>[h.x,h.y]),...garden.map(q=>q.slice()),[frontX+.5,y1+.5]);doorsBuilt+=pcgEnsureRoomLinks([x0,y0,x1,y1],PCG_GOALS);
- const decorationReport=pcgDressRooms(layout.metrics,rand,{maxPlacements:18});layout.metrics.decoration=decorationReport;PCG.topology.decoration=decorationReport;const furnCount=decorationReport.placed;
- for(const [type,q] of [['fridge',red],['desk',blue],['toolbox',tool]]){const x=q[0]-.5,y=q[1]-.5;FU.push([type,x,y,1,1,'S'])}
- let hedges=0;for(let tries=0;tries<120&&hedges<4;tries++){const vertical=rand()<.5,len=3+ri(4),sx2=3+ri(48),sy2=32+ri(6),cells=[];if(sy2+len>=H-1||sx2+len>=W-1)continue;for(let i=0;i<len;i++){const x=sx2+(vertical?0:i),y=sy2+(vertical?i:0);if(G[y][x]!=','){cells.length=0;break}cells.push([x,y])}if(cells.length!=len)continue;for(const q of cells)G[q[1]][q[0]]='#';const d=cells[1+ri(Math.max(1,len-2))];G[d[1]][d[0]]='D';if(pcgRoutesSafe()){hedges++;doorsBuilt++}else{for(const q of cells)G[q[1]][q[0]]=',';refreshDoors()}}
- let trees=0;for(let tries=0;tries<80&&trees<10;tries++){const x=2+ri(W-4),y=2+ri(H-5);if(G[y][x]!=','||dist(x+.5,y+.5,...PCG.spawn)<4||garden.some(q=>dist(x+.5,y+.5,...q)<1.5))continue;G[y][x]='S';FU.push(['tree',x,y,1,1,'S']);if(pcgRoutesSafe())trees++;else{G[y][x]=',';FU.pop()}}
- {/* bake the generated estate's FLOORS: grass yard with tufts, a worn path to the front door, per-room wood boards or tile checker */
- const bc=PCGFL.getContext('2d'),hs2=(x,y,i)=>{const v=Math.sin(x*127.1+y*311.7+(i||0)*74.7)*43758.5;return v-Math.floor(v)};
- for(let y=0;y<H;y++)for(let x=0;x<W;x++){const X=x*32,Y=y*32;
-  if(x==frontX&&y>y1&&y<H-1){bc.fillStyle='#d9d4c2';bc.fillRect(X,Y,32,32);bc.strokeStyle='rgba(0,0,0,.06)';bc.strokeRect(X+.5,Y+.5,31,31);continue}
-  let rm=null;for(const r of RMC)if(x>=r[0]&&x<=r[2]&&y>=r[1]&&y<=r[3]){rm=r;break}
-  if(rm){bc.fillStyle=rm[4];bc.fillRect(X,Y,32,32);const nm=rm[5]||'';
-   if(/bath|toilet|kitchen|sink|stove/i.test(nm)){if((x+y)%2){bc.fillStyle='rgba(0,0,0,.05)';bc.fillRect(X,Y,32,32)}bc.strokeStyle='rgba(0,0,0,.07)';bc.strokeRect(X+.5,Y+.5,31,31)}
-   else{const sh=hs2(x,y,1)*.14-.07;bc.fillStyle='rgba('+(sh>0?'255,244,220':'20,10,0')+','+Math.abs(sh)+')';bc.fillRect(X,Y,32,32);bc.strokeStyle='rgba(0,0,0,.10)';bc.beginPath();const off=(hs2(x,y,2)*24)|0;bc.moveTo(X,Y+8+off);bc.lineTo(X+32,Y+8+off);bc.stroke();if(hs2(x,y,7)<.3){bc.beginPath();bc.moveTo(X+8+off,Y);bc.lineTo(X+8+off,Y+32);bc.stroke()}}
-   continue}
-  bc.fillStyle=['#7fc268','#86c96e','#79b962'][(hs2(x,y,3)*3)|0];bc.fillRect(X,Y,32,32);
-  if(hs2(x,y,4)<.22){bc.strokeStyle='rgba(38,92,28,.55)';bc.lineWidth=2;const gx=X+6+hs2(x,y,5)*20,gy=Y+8+hs2(x,y,6)*14;bc.beginPath();bc.moveTo(gx,gy);bc.lineTo(gx-2,gy-5);bc.moveTo(gx+4,gy);bc.lineTo(gx+6,gy-6);bc.moveTo(gx+2,gy);bc.lineTo(gx+3,gy-4);bc.stroke();bc.lineWidth=1}}
+/* ======================================================================
+   ESTATE ADAPTER v3 — the part that turns a validated room graph into a
+   PLACE: house blocks (a main block plus wings, so footprints are L/T
+   shaped, not always a rectangle), outbuildings with their own interiors,
+   a fenced front garden, hedge runs and tree groves, windows along every
+   long exterior wall, and goals placed by REAL WALKING DISTANCE from the
+   front door rather than by room index.
+   Everything here is deterministic in `seed`, and every structural change
+   that could trap the player is validated with pcgRoutesSafe()/flood and
+   reverted if it fails: a seed that generates is a seed that can be won.
+====================================================================== */
+const PCG_LABELS=['Living Room','Dining Room','Bedroom','Bathroom','Workshop','Library',
+ 'Sunroom','Music Room','Pantry','Lounge','Nursery','Utility','Hallway','Boot Room','Playroom',
+ 'Drawing Room','Sitting Room','Garden Room','Office','Parlour','Snug','Craft Room','Guest Room',
+ 'Attic Room','Box Room','Washroom','Cellar','Store Room','Annexe','Back Kitchen'];
+const pcgWalkTile=c=>c==='.'||c==='D'||c==='L'||c==='B';
+const pcgWallTile=c=>c==='#'||c==='W'||c==='X';
+function pcgSetRect(x0,y0,x1,y1,tile){
+ for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)if(G[y]&&G[y][x]!==undefined)G[y][x]=tile;
+}
+/* hull = outer wall box, inclusive coords */
+function pcgStampHull(box){
+ const[x0,y0,x1,y1]=box;
+ for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)
+  G[y][x]=(y===y0||y===y1||x===x0||x===x1)?'#':'.';
+}
+function pcgYardFree(x0,y0,x1,y1,apron){
+ if(apron===undefined)apron=1;
+ if(x0-apron<1||y0-apron<1||x1+apron>W-2||y1+apron>H-2)return false;
+ for(let y=y0-apron;y<=y1+apron;y++)for(let x=x0-apron;x<=x1+apron;x++)
+  if(G[y][x]!==',')return false;
+ return true;
+}
+/* One building block: outer hull, then the BSP room engine inside it. Falls
+   back through looser options, and if the engine cannot validate anything at
+   all the block stays a single open room (still a usable place) instead of
+   throwing away the whole estate. */
+function pcgBuildBlock(rand,box,entry,options){
+ /* the corridor A* is free to wander outside the block it is wiring, which leaks
+    doors and floor into the yard around small buildings: snapshot the outside and
+    put it back, so a block can only ever change its own footprint */
+ const outside=[];
+ for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+  if(x>=box[0]&&x<=box[2]&&y>=box[1]&&y<=box[3])continue;
+  outside.push([x,y,G[y][x]]);
  }
-PCG.active=true;PCG.seed=seed;PCG.partitions=layout.cuts;PCG.doorsBuilt=doorsBuilt;PCG.furnishings=furnCount;PCG.yardFeatures=hedges+trees;PCG.rooms=PCG.rooms.filter(r=>r.name);refreshDoors();
-{/* WALL HYGIENE: (1) door rows — a run of adjacent doors along one wall is a bug, keep only the last of the run; (2) doubled wall layers — if a door or window opens straight into a SECOND wall layer, punch through it so openings actually matter */
- const hygiene=[];
- for(let pass=0;pass<2;pass++)for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const ch=G[y][x];
-  if(pass==0&&ch=='D'&&(G[y][x+1]=='D'||G[y+1][x]=='D')){hygiene.push([x,y,ch]);G[y][x]='#';continue}
-  if(pass==1&&(ch=='W'||ch=='D')){const horiz=(G[y][x-1]=='#'||G[y][x-1]=='W'||G[y][x-1]=='D'||G[y][x+1]=='#'||G[y][x+1]=='W'||G[y][x+1]=='D');const dirs=horiz?[[0,-1],[0,1]]:[[-1,0],[1,0]];
-   for(const dd of dirs){let px=x+dd[0],py=y+dd[1],n2=0;
-    while(n2<3&&px>0&&py>0&&px<W-1&&py<H-1&&G[py]&&G[py][px]=='#'){
-     /* PARALLEL-LAYER TEST: a true second wall layer runs parallel to the opening, so BOTH of
-     its along-wall neighbours are wall too. A tile with a floor neighbour alongside is a
-     PERPENDICULAR wall (a T-junction into another room) — punching that just tears a hole. */
-     const par=horiz?(G[py][px-1]=='#'&&G[py][px+1]=='#'):(G[py-1][px]=='#'&&G[py+1][px]=='#');
-     if(!par)break;
-     hygiene.push([px,py,'#']);G[py][px]='.';px+=dd[0];py+=dd[1];n2++}}}}
+ pcgStampHull(box);
+ const bounds=pcgNormalizeRoomBounds([box[0]+1,box[1]+1,box[2]-1,box[3]-1]);
+ const base={inset:0,paddingMin:1,paddingMax:1,forceOneLoop:true,
+  splitBias:.3,loopChance:.2,maxLoops:3,minLeaf:6,maxDepth:5,minRoomWidth:5,minRoomHeight:4};
+ const opt=Object.assign({},base,options||{});
+ /* every retry only RELAXES what the caller asked for (never overrides it back),
+    and none of them go below the 4x4 room floor the audit enforces */
+ const tries=[
+  opt,
+  /* the engine's own classic settings: bigger leaves mean fewer 3x3 wall junctions,
+     which its thickness repair would otherwise demolish */
+  Object.assign({},opt,{minLeaf:Math.max(opt.minLeaf,6),maxDepth:Math.max(opt.maxDepth,5),
+   minRoomWidth:5,minRoomHeight:4,loopChance:.24,maxLoops:3}),
+  Object.assign({},opt,{minLeaf:Math.max(3,opt.minLeaf-1),maxDepth:opt.maxDepth+1,loopChance:.15}),
+  Object.assign({},opt,{minLeaf:Math.max(3,opt.minLeaf-2),maxDepth:opt.maxDepth+2,loopChance:.1,maxLoops:2}),
+  Object.assign({},opt,{minLeaf:Math.max(3,opt.minLeaf-3),maxDepth:opt.maxDepth+3,
+   minRoomWidth:4,minRoomHeight:4,loopChance:.08,maxLoops:1})
+ ];
+ const region=[];
+ for(let y=bounds.y-1;y<=bounds.y2;y++)
+  for(let x=bounds.x-1;x<=bounds.x2;x++)region.push([x,y]);
+ const snapshot=()=>region.map(cell=>G[cell[1]][cell[0]]);
+ const restore=saved=>region.forEach((cell,i)=>{G[cell[1]][cell[0]]=saved[i]});
+ const wallTiles=()=>{
+  let n=0;
+  for(let y=bounds.y;y<bounds.y2;y++)for(let x=bounds.x;x<bounds.x2;x++)
+   if(G[y][x]==='#')n++;
+  return n;
+ };
+ /* a layout is only worth keeping if it still has WALLS: the wall-thickness repair
+    can otherwise eat every partition and leave one open hall */
+ const walled=(candidate,walls)=>candidate.rooms.length>=2&&
+  walls>=Math.max(10,candidate.rooms.length*5);
+ let layout=null,saved=null,bestScore=-1;
+ for(const settings of tries){
+  pcgSetRect(bounds.x,bounds.y,bounds.x2-1,bounds.y2-1,'.');
+  let candidate=null;
+  try{candidate=pcgBuildHouseTopology(G,bounds,rand,Object.assign({},settings,{entry}))}catch(e){candidate=null}
+  if(!candidate)continue;
+  const walls=wallTiles(),wallsOk=walled(candidate,walls);
+  const score=(candidate.valid?4:0)+(wallsOk?2:0)+candidate.audit.quality.score;
+  if(score>bestScore){bestScore=score;layout=candidate;saved=snapshot();layout.wallTiles=walls}
+  if(candidate.valid&&wallsOk)break;
+ }
+ if(saved)restore(saved);
+ for(const cell of outside)G[cell[1]][cell[0]]=cell[2];
+ if(!layout)return null;
+ if(layout.valid)return layout;
+ /* degraded but usable: keep the rooms (the caller repairs connectivity) */
+ const usable=layout.rooms.length>=2&&layout.rooms.every(room=>
+  G[room.cy]&&G[room.cy][room.cx]==='.');
+ if(usable){layout.degraded=1;return layout}
+ pcgStampHull(box);
+ return null;
+}
+/* A front door that actually lines up with the house: walk straight north from
+   the pavement until floor appears, make the outer wall a door and open any
+   wall behind it. This is what the old adapter got wrong — it picked a random
+   x for the door and the interior entry corridor ended up diagonal to it. */
+function pcgCarveEntrance(rand,box){
+ const[x0,y0,x1,y1]=box,candidates=[];
+ for(let x=x0+2;x<=x1-2;x++){
+  if(!G[y1+1]||G[y1+1][x]!==',')continue;
+  const carved=[];let y=y1,floorY=-1;
+  while(y>y0+1&&carved.length<4){
+   const c=G[y][x];
+   if(c==='.'){floorY=y;break}
+   if(c==='#'||c==='W'){carved.push(y);y--;continue}
+   break;
+  }
+  if(floorY<0||!carved.length)continue;
+  candidates.push({x,carved,floorY});
+ }
+ if(!candidates.length)return null;
+ const c=candidates[(rand()*candidates.length)|0];
+ c.carved.forEach((y,i)=>{G[y][c.x]=i===0?'D':'.'});
+ return{x:c.x,y:y1,floorY:c.floorY};
+}
+/* Join two touching blocks with a doorway through both wall layers. */
+function pcgJoinBlocks(rand,aBox,bBox,side){
+ const candidates=[];
+ const vertical=side==='east'||side==='west';
+ if(vertical){
+  const ax=side==='east'?aBox[2]:aBox[0],bx=side==='east'?bBox[0]:bBox[2],dx=side==='east'?1:-1;
+  const lo=Math.max(aBox[1],bBox[1])+1,hi=Math.min(aBox[3],bBox[3])-1;
+  for(let y=lo;y<=hi;y++){
+   if(G[y][ax]!=='#'||G[y][bx]!=='#')continue;
+   if(!pcgWalkTile(G[y][ax-dx])||!pcgWalkTile(G[y][bx+dx]))continue;
+   candidates.push({x:ax,y,other:bx});
+  }
+ }else{
+  const ay=side==='south'?aBox[3]:aBox[1],by=side==='south'?bBox[1]:bBox[3],dy=side==='south'?1:-1;
+  const lo=Math.max(aBox[0],bBox[0])+1,hi=Math.min(aBox[2],bBox[2])-1;
+  for(let x=lo;x<=hi;x++){
+   if(G[ay][x]!=='#'||G[by][x]!=='#')continue;
+   if(!pcgWalkTile(G[ay-dy][x])||!pcgWalkTile(G[by+dy][x]))continue;
+   candidates.push({x,y:ay,other:by});
+  }
+ }
+ if(!candidates.length)return null;
+ const c=candidates[(rand()*candidates.length)|0];
+ G[c.y][c.x]='D';
+ if(vertical)G[c.y][c.other]='D';else G[c.other][c.x]='D';
+ return c;
+}
+/* ---- connectivity: flood, then carve a corridor to anything stranded ---- */
+function pcgReachFrom(x,y){
+ const seen=new Uint8Array(W*H);
+ let sx=x|0,sy=y|0;
+ if(!npass(sx,sy)){const f=nearestFree(sx,sy);sx=f[0];sy=f[1]}
+ if(!npass(sx,sy))return seen;
+ const stack=[sy*W+sx];seen[sy*W+sx]=1;
+ while(stack.length){
+  const id=stack.pop(),cx=id%W,cy=(id/W)|0;
+  for(const d of PCG_CARDINAL){
+   const nx=cx+d[0],ny=cy+d[1];
+   if(nx<1||ny<1||nx>W-2||ny>H-2)continue;
+   if(!npass(nx,ny))continue;
+   const ni=ny*W+nx;
+   if(seen[ni])continue;
+   seen[ni]=1;stack.push(ni);
+  }
+ }
+ return seen;
+}
+function pcgCarveToReach(target,reach){
+ const n=W*H,d=new Float32Array(n),prev=new Int32Array(n),done=new Uint8Array(n),h=new Heap();
+ const tx=target[0]|0,ty=target[1]|0;
+ if(tx<1||ty<1||tx>W-2||ty>H-2)return 0;
+ d.fill(1e9);prev.fill(-1);
+ const start=ty*W+tx;
+ d[start]=0;h.push(start,0);
+ let end=-1;
+ while(h.n){
+  const cur=h.pop();
+  if(done[cur])continue;
+  done[cur]=1;
+  if(cur!==start&&reach[cur]){end=cur;break}
+  const cx=cur%W,cy=(cur/W)|0;
+  for(const dir of PCG_CARDINAL){
+   const nx=cx+dir[0],ny=cy+dir[1];
+   if(nx<1||ny<1||nx>W-2||ny>H-2)continue;
+   const c=G[ny][nx];
+   if(c!=='#'&&c!=='W'&&!pcgWalkTile(c))continue;
+   const ni=ny*W+nx,step=(c==='#'||c==='W')?9:1,nd=d[cur]+step;
+   if(nd<d[ni]){d[ni]=nd;prev[ni]=cur;h.push(ni,nd)}
+  }
+ }
+ if(end<0)return 0;
+ let made=0,cur=prev[end];
+ while(cur>=0){
+  const x=cur%W,y=(cur/W)|0;
+  if(G[y][x]==='#'||G[y][x]==='W'){G[y][x]='D';made++}
+  cur=prev[cur];
+ }
+ return made;
+}
+/* every room centre must be walkable from the front door, not just the goals */
+function pcgEnsureConnected(rooms,spawn){
+ for(let pass=0;pass<8;pass++){
+  const reach=pcgReachFrom(spawn[0],spawn[1]);
+  const missing=rooms.filter(r=>!reach[(r.cy|0)*W+(r.cx|0)]);
+  if(!missing.length){refreshDoors();return true}
+  let fixed=0;
+  for(const room of missing.slice(0,3))fixed+=pcgCarveToReach([room.cx,room.cy],reach);
+  if(!fixed)break;
+  refreshDoors();
+ }
  refreshDoors();
- if(!pcgRoutesSafe()){for(const q of hygiene)G[q[1]][q[0]]=q[2];refreshDoors()}}
-if(!pcgRoutesSafe()){restoreBaseMap();throw new Error('Generated estate failed route validation for seed '+seed)}const macrodoors=DR.length;PCG.doorsBuilt=Math.max(doorsBuilt,macrodoors);PCG.goals=PCG_GOALS.map(q=>q.slice());CD=1;return layout.cuts}
+ const reach=pcgReachFrom(spawn[0],spawn[1]);
+ return rooms.every(r=>reach[(r.cy|0)*W+(r.cx|0)]);
+}
+/* ---- walking-distance map (BFS steps over real walkable tiles) ---- */
+function pcgWalkDistances(sx,sy){
+ const out=new Float32Array(W*H).fill(1e9);
+ const s=nearestFree(sx,sy);
+ if(!npass(s[0],s[1]))return out;
+ const start=s[1]*W+s[0];
+ out[start]=0;
+ const stack=[start];
+ for(let head=0;head<stack.length;head++){
+  const id=stack[head],cx=id%W,cy=(id/W)|0,base=out[id];
+  for(const d of PCG_CARDINAL){
+   const nx=cx+d[0],ny=cy+d[1];
+   if(nx<1||ny<1||nx>W-2||ny>H-2)continue;
+   if(!npass(nx,ny))continue;
+   const ni=ny*W+nx;
+   if(out[ni]<=base+1)continue;
+   out[ni]=base+1;stack.push(ni);
+  }
+ }
+ return out;
+}
+/* ---- outbuildings: sampled into the yard, never overlapping anything ---- */
+function pcgPlaceOutbuilding(rand,w,h,regions,options){
+ const spots=[];
+ for(const R of regions){
+  const yMax=Math.min(R[3],H-3-h+1),xMax=Math.min(R[2],W-3-w+1);
+  for(let y=R[1];y<=yMax;y++)for(let x=R[0];x<=xMax;x++){
+   if(!pcgYardFree(x,y,x+w-1,y+h-1,1))continue;
+   spots.push([x,y]);
+  }
+ }
+ if(!spots.length){
+  /* the requested regions were too tight after the house, wings and other
+     outbuildings went down: sweep the whole yard before giving up, because the
+     vault and the shed carry the objective chain */
+  for(let y=2;y<=H-3-h+1;y++)for(let x=2;x<=W-3-w+1;x++)
+   if(pcgYardFree(x,y,x+w-1,y+h-1,1))spots.push([x,y]);
+ }
+ if(!spots.length)return null;
+ const at=spots[(rand()*spots.length)|0];
+ const box=[at[0],at[1],at[0]+w-1,at[1]+h-1];
+ const entry={x:pcgInt(rand,box[0]+1,box[2]-1),y:box[3]-1};
+ const layout=pcgBuildBlock(rand,box,entry,options);
+ const entrance=pcgCarveEntrance(rand,box);
+ refreshDoors();
+ return{box,layout,entrance};
+}
+/* windows along every long exterior wall: light, and a reason to look at walls */
+function pcgPlaceWindows(rand,boxes){
+ const chosen=[];
+ for(const box of boxes){
+  if(!box)continue;
+  const[x0,y0,x1,y1]=box;
+  const runs=[[x0+2,x1-2,y0,0],[x0+2,x1-2,y1,0],[y0+2,y1-2,x0,1],[y0+2,y1-2,x1,1]];
+  for(const run of runs){
+   const[from,to,at,vertical]=run;
+   if(to-from<3)continue;
+   const step=3+((rand()*2)|0);
+   for(let p=from+1;p<=to-1;p+=step){
+    const x=vertical?at:p,y=vertical?p:at;
+    if(G[y][x]!=='#')continue;
+    if(G[y][x-1]==='D'||G[y][x+1]==='D'||G[y-1][x]==='D'||G[y+1][x]==='D')continue;
+    if(G[y][x-1]==='W'||G[y][x+1]==='W'||G[y-1][x]==='W'||G[y+1][x]==='W')continue;
+    G[y][x]='W';chosen.push([x,y]);
+    p+=rand()<.4?1:0;
+   }
+  }
+ }
+ return chosen;
+}
+function makePCGMap(seed,attempt){
+ /* `attempt` is an internal salt, not a different level: if one roll of the dice
+    cannot produce a valid estate the SAME seed is rolled again with a mixed
+    stream, so the number the player typed is always the estate they get */
+ attempt=attempt||0;
+ restoreBaseMap();forgetMapGeometry();seed=(seed>>>0)||1;
+ const salt=(seed^Math.imul(attempt,0x9E3779B9))>>>0;
+ const rand=mapRng(salt),ri=n=>Math.floor(rand()*n);
+ const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=ri(i+1);const t=a[i];a[i]=a[j];a[j]=t}return a};
+ for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++)G[y][x]=',';
+ FU.length=0;
+ /* ---------- 1. THE HOUSE: a main block, sometimes with wings ---------- */
+ const mainW=23+ri(9),mainH=16+ri(7);
+ const mainX=7+ri(6),mainY=3+ri(4);
+ const mainBox=[mainX,mainY,mainX+mainW,mainY+mainH];
+ const frontHint=pcgInt(rand,mainBox[0]+3,mainBox[2]-3);
+ const mainEntry={x:frontHint,y:mainBox[3]-1};
+ const mainLayout=pcgBuildBlock(rand,mainBox,mainEntry,{minLeaf:5,maxDepth:6,minRoomWidth:4,minRoomHeight:4,loopChance:.26,maxLoops:4});
+ const mainFront=pcgCarveEntrance(rand,mainBox);
+ const blocks=[{box:mainBox,layout:mainLayout,name:'house'}];
+ let frontX=mainFront?mainFront.x:frontHint;
+ const frontY=mainBox[3];
+ /* wings: an L or T footprint instead of always a plain rectangle */
+ const wingSides=[];
+ if(rand()<.78)wingSides.push('east');
+ if(rand()<.5)wingSides.push('west');
+ let wingNote='';
+ for(const side of wingSides){
+  const w=10+ri(5),h=8+ri(4),jitter=ri(3)-1;
+  let box=null;
+  if(side==='east')box=[mainBox[2]+1,mainBox[1]+jitter,mainBox[2]+w,mainBox[1]+jitter+h-1];
+  if(side==='west')box=[mainBox[0]-w,mainBox[1]+jitter,mainBox[0]-1,mainBox[1]+jitter+h-1];
+  if(!box)continue;
+  if(box[0]<2||box[2]>W-3||box[1]<2||box[3]>H-12)continue;
+  if(!pcgYardFree(box[0],box[1],box[2],box[3],0))continue;
+  const wingEntry={x:pcgInt(rand,box[0]+1,box[2]-1),y:box[3]-1};
+  const wingLayout=pcgBuildBlock(rand,box,wingEntry,{minLeaf:4,maxDepth:3,minRoomWidth:4,minRoomHeight:4,loopChance:.1,maxLoops:1});
+  if(!wingLayout)continue;
+  const door=pcgJoinBlocks(rand,side==='east'?mainBox:box,side==='east'?box:mainBox,side);
+  pcgCarveEntrance(rand,box);
+  blocks.push({box,layout:wingLayout,name:'wing',side,join:door});
+  wingNote=side;
+ }
+ const shedW=6+ri(4),shedH=5+ri(3);
+ const vaultW=7+ri(5),vaultH=5+ri(4);
+ const garageW=7+ri(5),garageH=6+ri(3);
+ const westBand=[2,2,Math.max(2,mainBox[0]-2),H-8];
+ const eastBand=[Math.min(W-3,mainBox[2]+2),2,W-3,H-8];
+ const northBand=[2,2,W-3,Math.max(2,mainBox[1]-2)];
+ /* the shed (lockpick) and the vault (secret) are required, so they get the
+    most reliable regions first; the garage is a bonus building */
+ const shed=pcgPlaceOutbuilding(rand,shedW,shedH,
+  [westBand,eastBand,northBand].filter(r=>r[2]-r[0]>=shedW&&r[3]-r[1]>=shedH),
+  {minLeaf:4,maxDepth:2,minRoomWidth:4,minRoomHeight:4,maxLoops:1});
+ const vault=pcgPlaceOutbuilding(rand,vaultW,vaultH,
+  [eastBand,westBand,northBand].filter(r=>r[2]-r[0]>=vaultW&&r[3]-r[1]>=vaultH),
+  {minLeaf:4,maxDepth:2,minRoomWidth:4,minRoomHeight:4,maxLoops:1});
+ const garage=(rand()<.55)?pcgPlaceOutbuilding(rand,garageW,garageH,
+  [northBand,westBand,eastBand].filter(r=>r[2]-r[0]>=garageW&&r[3]-r[1]>=garageH),
+  {minLeaf:4,maxDepth:2,minRoomWidth:4,minRoomHeight:4,maxLoops:1}):null;
+ for(const b of [shed,vault,garage])if(b)blocks.push({box:b.box,layout:b.layout,name:'outbuilding'});
+ /* ---------- 2. ONE ROOM LIST over every block ---------- */
+ const allRooms=[];
+ for(const block of blocks){
+  if(!block.layout)continue;
+  for(const room of block.layout.rooms){
+   room.role=room.role||'ordinary';
+   room.block=block.name;
+   allRooms.push(room);
+  }
+ }
+ const mainRooms=mainLayout?mainLayout.rooms:[];
+ /* ---------- 3. SPAWN, THEN TRUE WALKING DISTANCES ---------- */
+ PCG.spawn=[frontX+.5,frontY+2.5];
+ let df=pcgWalkDistances(PCG.spawn[0],PCG.spawn[1]);
+ const distOf=room=>df[(room.cy|0)*W+(room.cx|0)];
+ const byDepth=allRooms.slice().sort((a,b)=>distOf(b)-distOf(a));
+ /* ROLES: the foyer is fixed first (it is where the front door lets out), then the
+    study is the deepest room with the FEWEST ways in — that is the room worth
+    locking, because every one of its doors can be gated by the same key */
+ const entryRoom=(mainLayout&&mainLayout.rooms[mainLayout.entryRoom])||mainRooms[0]||null;
+ const visitable=mainRooms.filter(room=>room!==entryRoom);
+ const degree=room=>room.exits.length;
+ const byGating=visitable.slice().sort((a,b)=>(degree(a)-degree(b))||(distOf(b)-distOf(a))||(b.area-a.area));
+ let study=byGating[0]||null;
+ const rest=visitable.filter(room=>room!==study);
+ const destination=rest.slice().sort((a,b)=>distOf(b)-distOf(a))[0]||byDepth[0];
+ const kitchenPool=rest.filter(room=>room!==destination);
+ const kitchen=kitchenPool.slice().sort((a,b)=>distOf(b)-distOf(a))[Math.floor(kitchenPool.length*.5)]||destination;
+ for(const room of allRooms)room.role='ordinary';
+ if(entryRoom)entryRoom.role='entry';
+ if(study)study.role='study';
+ if(destination)destination.role='destination';
+ if(kitchen)kitchen.role='kitchen';
+ /* ---------- 4. THE LOCK: the study's only exit, and nothing else ---------- */
+ const lockedDoors=[];
+ /* some estates end up with an open-plan room where walls were repaired away, so
+    the study is chosen as "the deepest room that still HAS a door to lock"; if the
+    first pick has none, the role (and the blue key) moves to one that does */
+ if(study){
+  /* every way into the study gets the same lock: one lockpick still opens the
+     room, but no loop can walk round the gate. Doors are found by looking at
+     the tiles hugging the room's own floor, which is where they must be. */
+  const doorsAround=(room,radius)=>{
+   const found=[],seenDoor={};
+   for(let y=room.y-radius;y<=room.y2+radius-1;y++)
+    for(let x=room.x-radius;x<=room.x2+radius-1;x++){
+     if(!G[y]||G[y][x]!=='D')continue;
+     const touches=[[0,0],[1,0],[-1,0],[0,1],[0,-1]].some(d=>{
+      const nx=x+d[0],ny=y+d[1];
+      return nx>=room.x&&nx<room.x2&&ny>=room.y&&ny<room.y2&&G[ny][nx]==='.';
+     });
+     if(!touches)continue;
+     const key=x+','+y;
+     if(seenDoor[key])continue;
+     seenDoor[key]=1;found.push([x,y]);
+    }
+   return found;
+  };
+  let doors=doorsAround(study,1).concat(doorsAround(study,2));
+  if(!doors.length)doors=doorsAround(study,4);
+  if(!doors.length){
+   for(const candidate of byGating.slice(1)){
+    const alt=doorsAround(candidate,2);
+    if(!alt.length)continue;
+    study.role='ordinary';
+    study=candidate;
+    study.role='study';
+    doors=alt;
+    break;
+   }
+  }
+  for(const d of doors.slice(0,3)){G[d[1]][d[0]]='L';lockedDoors.push(d)}
+ }
+ const lockedDoor=lockedDoors[0]||null;
+ let vaultDoorCell=null;
+ if(vault){
+  /* exactly one way into the vault, and it is the locked one */
+  const b=vault.box;
+  const candidates=[];
+  for(let y=b[1];y<=b[3];y++)for(let x=b[0];x<=b[2];x++){
+   if(G[y][x]==='D'||G[y][x]==='W')candidates.push([x,y]);
+  }
+  const pick=(vault.entrance&&G[vault.entrance.y][vault.entrance.x]==='D')
+   ?[vault.entrance.x,vault.entrance.y]:candidates[0];
+  if(pick){G[pick[1]][pick[0]]='B';vaultDoorCell=pick}
+  else{
+   /* no opening at all: cut one in the south wall over real floor */
+   const mid=((b[0]+b[2])/2)|0;
+   const order=[];for(let x=b[0]+1;x<b[2];x++)order.push(x);
+   order.sort((p,q)=>Math.abs(p-mid)-Math.abs(q-mid));
+   for(const x of order){
+    if(G[b[3]+1]&&G[b[3]+1][x]===','&&G[b[3]-1][x]==='.'){
+     G[b[3]][x]='B';vaultDoorCell=[x,b[3]];break;
+    }
+   }
+  }
+ }
+ /* ---------- 5. LABELS + RMC ---------- */
+ const labels=shuffle(PCG_LABELS.slice());
+ const roomColor=i=>['#e6cf9f','#d9e8e4','#ead9b0','#dcdcea','#eed6e4','#d9c39a','#cde6f2'][i%7];
+ let labelIndex=0;
+ const roomRecords=[];
+ for(const room of allRooms){
+  let name=labels[labelIndex++%labels.length];
+  if(room===study)name='Study';
+  else if(room===kitchen)name='Kitchen';
+  else if(room===destination)name='Conservatory';
+  else if(room===mainRooms[mainLayout?mainLayout.entryRoom:0])name='Foyer';
+  room.label=name;
+  room.color=roomColor(room.id);
+  roomRecords.push([room.x-1,room.y-1,room.x2,room.y2,room.color,name]);
+
+ }
+ RMC.splice(0,RMC.length);
+ if(vault){const b=vault.box;RMC.push([b[0]+1,b[1]+1,b[2]-1,b[3]-1,'#8d97a8','Vault'])}
+ if(shed){const b=shed.box;RMC.push([b[0]+1,b[1]+1,b[2]-1,b[3]-1,'#dccaa6','Shed'])}
+ if(garage){const b=garage.box;RMC.push([b[0]+1,b[1]+1,b[2]-1,b[3]-1,'#cfc3ae','Garage'])}
+ RMC.push(...roomRecords);
+ /* ---------- 6. GOALS BY WALKING DISTANCE ---------- */
+ PCG_GOALS.splice(0,PCG_GOALS.length);
+ const used=[];
+ const cellIn=(room,extra)=>{const r=pcgRoomCell([room.x-1,room.y-1,room.x2,room.y2],rand,used.concat(extra||[]));
+  if(r)used.push(r);return r};
+ const kitchenCell=kitchen?cellIn(kitchen):null;
+ const studyCell=study?cellIn(study):null;
+ const red=kitchenCell||(allRooms.length?cellIn(allRooms[0]):[PCG.spawn[0],PCG.spawn[1]-2]);
+ const blue=studyCell||(allRooms.length?cellIn(allRooms[allRooms.length-1]):red);
+ const shedCell=shed?[shed.box[0]+2.5,shed.box[1]+2.5]:red;
+ const vaultCell=vault?[(vault.box[0]+vault.box[2])/2+.5,(vault.box[1]+vault.box[3])/2+.5]:blue;
+ CT[0].x=red[0];CT[0].y=red[1];
+ CT[1].x=blue[0];CT[1].y=blue[1];
+ CT[2].x=shedCell[0];CT[2].y=shedCell[1];
+ SECRET.x=vaultCell[0];SECRET.y=vaultCell[1];SECRET.got=0;
+ /* he starts as far from your door as the estate allows */
+ const farEnough=room=>Math.hypot(room.cx+.5-PCG.spawn[0],room.cy+.5-PCG.spawn[1])>11;
+ const npcRoom=byDepth.find(room=>room.block==='house'&&farEnough(room))||
+  byDepth.find(room=>room.block==='house')||byDepth[0];
+ PCG.npcSpawn=npcRoom?[npcRoom.cx+.5,npcRoom.cy+.5]:[mainX+mainW/2,mainY+mainH/2];
+ /* hiding places live in the deep rooms, not the first one you walk into */
+ const hideRooms=byDepth.filter(room=>room!==npcRoom).slice(0,3);
+ const hides=[];
+ const hideLabels=['in the wardrobe','under the bed','behind the curtains'];
+ for(let i=0;i<hideRooms.length&&hides.length<2;i++){
+  const c=cellIn(hideRooms[i]);
+  if(!c)continue;
+  hides.push({x:c[0],y:c[1],ex:c[0],ey:c[1]+1,l:hideLabels[hides.length]});
+ }
+ if(hides.length)HIDES.splice(0,HIDES.length,...hides);else HIDES.splice(0,HIDES.length);
+ /* ---------- 7. PICKUPS: spread over DIFFERENT rooms ---------- */
+ const floorCells=[];
+ for(const room of allRooms)for(let y=room.y;y<room.y2;y++)for(let x=room.x;x<room.x2;x++)
+  if(G[y][x]==='.')floorCells.push([x+.5,y+.5]);
+ const wallCells=floorCells.filter(q=>{const x=q[0]|0,y=q[1]|0;
+  return G[y-1][x]=='#'||G[y+1][x]=='#'||G[y][x-1]=='#'||G[y][x+1]=='#'});
+ const pool=wallCells.length?wallCells:floorCells;
+ const spread=[];
+ for(const room of allRooms){
+  const cells=pool.filter(q=>q[0]>room.x-1&&q[0]<room.x2&&q[1]>room.y-1&&q[1]<room.y2);
+  if(cells.length)spread.push(cells[ri(cells.length)]);
+ }
+ ITEMS.forEach((it,i)=>{
+  const q=spread.length?spread[i%spread.length]:pool[(i*5+2)%Math.max(1,pool.length)];
+  if(!q)return;
+  it.x=q[0];it.y=q[1];it.hx=q[0];it.hy=q[1];
+  it.z=0;it.vx=0;it.vy=0;it.vz=0;it.fly=0;it.ox=0;it.oy=0;
+ });
+ /* the tomato bed sits beside the path, inside the fence */
+ const gardenX=cl(frontX-1,3,W-4),gardenY=frontY+4;
+ PL.forEach((p,i)=>{p.x=gardenX+(i%3);p.y=gardenY+((i/3)|0)*2;
+  if(G[p.y]&&G[p.y][p.x]===',')G[p.y][p.x]='T'});
+ const garden=PL.map(p=>[p.x+.5,p.y+.5]);
+ /* the goal list is the contract every yard prop is validated against, so it is
+    built before the first hedge goes down, not after */
+ PCG_GOALS.push([CT[0].x,CT[0].y],[CT[1].x,CT[1].y],[CT[2].x,CT[2].y],
+  [SECRET.x,SECRET.y],[PCG.npcSpawn[0],PCG.npcSpawn[1]],
+  ...HIDES.map(h=>[h.x,h.y]),...garden.map(q=>q.slice()),[frontX+.5,frontY+.5]);
+ /* ---------- 8. THE YARD: fence, gate, hedge runs, groves ---------- */
+ let fenceCount=0,fenceY=-1,fenceX0=0,fenceX1=0;
+ if(frontY+11<H-3&&rand()<.82){
+  const y=frontY+6+ri(4);
+  const half=8+ri(5);
+  const x0=Math.max(2,frontX-half),x1=Math.min(W-3,frontX+half);
+  const gate=[frontX,frontX+1];
+  const cells=[];
+  for(let x=x0;x<=x1;x++){if(gate.includes(x))continue;if(G[y][x]===',')cells.push([x,y])}
+  /* the fence turns back toward the house at both ends, so the front garden is a
+     real enclosure with one gate instead of a line drawn across the lawn */
+  for(let k=1;k<=3;k++){
+   const yy=y-k;
+   if(yy<=frontY+1)break;
+   if(G[yy][x0]===',')cells.push([x0,yy]);
+   if(G[yy][x1]===',')cells.push([x1,yy]);
+  }
+  for(const c of cells)G[c[1]][c[0]]='X';
+  refreshDoors();
+  if(cells.length>3&&!pcgRoutesSafe()){for(const c of cells)G[c[1]][c[0]]=','}
+  else{fenceCount=cells.length;fenceY=y;fenceX0=x0;fenceX1=x1}
+ }
+ let hedges=0;
+ for(let tries=0;tries<200&&hedges<6;tries++){
+  const vertical=rand()<.45,len=5+ri(6);
+  const wx=2+ri(W-8),wy=2+ri(H-8);
+  const cells=[];
+  let bad=0;
+  const push=(x,y)=>{
+   if(bad)return;
+   if(x<2||y<2||x>W-3||y>H-3||G[y][x]!==','){bad=1;return}
+   if(Math.abs(x-frontX)<=2&&y>frontY-2){bad=1;return}   /* never across the front path */
+   cells.push([x,y]);
+  };
+  for(let i=0;i<len;i++)push(wx+(vertical?0:i),wy+(vertical?i:0));
+  /* half of them turn a corner, which reads as a garden hedge rather than a stripe */
+  if(rand()<.5){
+   const arm=2+ri(3),sign=rand()<.5?1:-1;
+   for(let i=1;i<=arm;i++)push(wx+(vertical?sign*i:0)+ (vertical?0:len-1),wy+(vertical?len-1:0)+(vertical?0:sign*i));
+  }
+  if(bad||cells.length<4)continue;
+  /* a hedge is a wall with a DOORWAY in it: guaranteed passable by construction */
+  const gap=1+ri(cells.length-2);
+  for(let i=0;i<cells.length;i++)if(i!==gap)G[cells[i][1]][cells[i][0]]='#';
+  refreshDoors();
+  if(pcgRoutesSafe())hedges++;
+  else for(const c of cells)G[c[1]][c[0]]=',';
+ }
+ let trees=0;
+ const groves=3+ri(2);
+ for(let g=0;g<groves;g++){
+  const gx=3+ri(W-7),gy=3+ri(H-8),count=3+ri(4);
+  for(let i=0;i<count;i++){
+   const x=cl(gx+ri(5)-2,2,W-3),y=cl(gy+ri(5)-2,2,H-3);
+   if(G[y][x]!==','||dist(x+.5,y+.5,PCG.spawn[0],PCG.spawn[1])<5)continue;
+   if((x===frontX||x===frontX+1)&&y>frontY-1)continue;
+   if(garden.some(q=>dist(x+.5,y+.5,q[0],q[1])<2))continue;
+   G[y][x]='S';FU.push(['tree',x,y,1,1,'S']);
+   refreshDoors();
+   if(pcgRoutesSafe())trees++;
+   else{G[y][x]=',';FU.pop()}
+  }
+ }
+ /* ---------- 9. WINDOWS on every long exterior wall ---------- */
+ const winBoxes=blocks.map(b=>b.box);
+ const winCells=pcgPlaceWindows(rand,winBoxes);
+ WINS.splice(0,WINS.length,...winCells.slice(0,24));
+ /* ---------- 10. STATIONS ---------- */
+ const outside=[frontX+.5,frontY+1.5];
+ const stationCells=floorCells.filter(q=>dist(q[0],q[1],red[0],red[1])>2&&dist(q[0],q[1],blue[0],blue[1])>2);
+ for(const k of Object.keys(ST)){
+  const old=BASE_ST[k]||[];
+  const arr=ST[k];
+  arr.length=0;
+  for(let i=0;i<Math.max(1,old.length);i++){
+   let q;
+   if(k==='shed')q=shed?[shed.box[0]+(shed.box[2]-shed.box[0]+1)/2,shed.box[1]+2.5]:outside;
+   else if(k==='garden')q=garden[i%garden.length];
+   else if(k==='gate'||k==='front')q=outside;
+   else if(k==='window')q=winCells.length?[winCells[i%winCells.length][0]+.5,winCells[i%winCells.length][1]+.5]:outside;
+   else if(k==='streetlight')q=[frontX+.5,frontY+5.5];
+   else if(k==='patio')q=[frontX+.5,frontY-1.5];
+   else q=stationCells.length?stationCells[ri(stationCells.length)]:(floorCells.length?floorCells[ri(floorCells.length)]:outside);
+   arr.push(q.slice());
+  }
+ }
+ if(shed)ST.shed.splice(0,ST.shed.length,[shed.box[0]+(shed.box[2]-shed.box[0]+1)/2,shed.box[1]+2.5]);
+ ST.garden.splice(0,ST.garden.length,...garden.slice(0,3));
+ ST.gate.splice(0,ST.gate.length,outside);
+ ST.front.splice(0,ST.front.length,[frontX+.5,frontY-.5]);
+ {const r=(ST.radio||[])[0];if(r){RADIO.x=r[0];RADIO.y=r[1]}
+  const t=(ST.tv||[])[0];if(t){TVX=t[0];TVY=t[1]}
+  const a=(ST.night||[])[0];if(a){ALX=a[0];ALY=a[1]}}
+ /* ---------- 11. GOAL LIST, then the connectivity contract ---------- */
+ refreshDoors();
+ let repaired=pcgEnsureConnected(allRooms,PCG.spawn);
+ if(!repaired){/* last resort: open the whole yard and retry */
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++)if(G[y][x]==='S'||G[y][x]==='X')G[y][x]=',';
+  FU.length=0;refreshDoors();
+  repaired=pcgEnsureConnected(allRooms,PCG.spawn);
+ }
+ /* ---------- 12. FURNITURE (route-checked, reverted per piece) ---------- */
+ const decorationReport={placed:0,rejected:0,planned:0,byRole:{},blocks:[]};
+ for(const block of blocks){
+  if(!block.layout)continue;
+  const bw=block.box[2]-block.box[0]-1,bh=block.box[3]-block.box[1]-1;
+  const inner=pcgRect(block.box[0]+1,block.box[1]+1,bw,bh);
+  const budget=block.name==='house'?24:(block.name==='wing'?6:3);
+  let report=null;
+  try{
+   report=pcgDressRooms({rooms:block.layout.rooms,entryRoom:block.layout.entryRoom,
+    interior:inner,entry:block.layout.entry},rand,{maxPlacements:budget});
+  }catch(e){report=null}
+  if(!report)continue;
+  decorationReport.placed+=report.placed||0;
+  decorationReport.rejected+=report.rejected||0;
+  decorationReport.planned+=report.planned||0;
+  decorationReport.blocks.push({block:block.name,placed:report.placed||0});
+ }
+ const furnCount=decorationReport.placed||0;
+ for(const [type,q] of [['fridge',red],['desk',blue],['toolbox',shedCell]]){
+  FU.push([type,q[0]-.5,q[1]-.5,1,1,'S']);
+ }
+ /* ---------- 13. FLOORS: grass, gravel drive, boards per room ---------- */
+ {
+  const bc=PCGFL.getContext('2d'),hs2=(x,y,i)=>{const v=Math.sin(x*127.1+y*311.7+(i||0)*74.7)*43758.5;return v-Math.floor(v)};
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+   const X=x*32,Y=y*32;
+   const onDrive=x===frontX||x===frontX+1;
+   const onPatio=y>frontY&&y<=frontY+2&&Math.abs(x-frontX)<=2;
+   if(onPatio&&G[y][x]===','){
+    /* a paved apron at the door, so the entrance reads as an entrance */
+    bc.fillStyle=(x+y)%2?'#cfc9b6':'#c7c1ae';
+    bc.fillRect(X,Y,32,32);
+    bc.strokeStyle='rgba(0,0,0,.10)';bc.strokeRect(X+.5,Y+.5,31,31);
+    bc.fillStyle='rgba(255,255,255,.12)';
+    for(let k=0;k<2;k++)bc.fillRect(X+4+hs2(x,y,k)*22,Y+5+hs2(x,y,k+2)*20,4,3);
+    continue;
+   }
+   if(onDrive&&y>frontY&&y<H-1){
+    bc.fillStyle=y%2?'#d9d4c2':'#d4cfbc';
+    bc.fillRect(X,Y,32,32);
+    bc.fillStyle='rgba(120,110,90,.10)';
+    for(let k=0;k<3;k++)bc.fillRect(X+hs2(x,y,k)*28,Y+hs2(x,y,k+3)*28,3,2);
+    bc.strokeStyle='rgba(0,0,0,.05)';bc.strokeRect(X+.5,Y+.5,31,31);continue;
+   }
+   let rm=null;
+   for(const r of RMC)if(x>=r[0]&&x<=r[2]&&y>=r[1]&&y<=r[3]){rm=r;break}
+   if(rm){
+    bc.fillStyle=rm[4];bc.fillRect(X,Y,32,32);
+    const nm=rm[5]||'';
+    if(/bath|toilet|kitchen|sink|stove|wash/i.test(nm)){
+     if((x+y)%2){bc.fillStyle='rgba(0,0,0,.05)';bc.fillRect(X,Y,32,32)}
+     bc.strokeStyle='rgba(0,0,0,.07)';bc.strokeRect(X+.5,Y+.5,31,31);
+    }else if(/vault|garage|shed|cellar/i.test(nm)){
+     bc.strokeStyle='rgba(0,0,0,.16)';bc.strokeRect(X+.5,Y+.5,31,31);
+     bc.fillStyle='rgba(0,0,0,.05)';bc.fillRect(X,Y+12,32,8);
+    }else{
+     const sh=hs2(x,y,1)*.14-.07;
+     bc.fillStyle='rgba('+(sh>0?'255,244,220':'20,10,0')+','+Math.abs(sh)+')';bc.fillRect(X,Y,32,32);
+     bc.strokeStyle='rgba(0,0,0,.10)';bc.beginPath();
+     const off=(hs2(x,y,2)*24)|0;
+     bc.moveTo(X,Y+8+off);bc.lineTo(X+32,Y+8+off);bc.stroke();
+     if(hs2(x,y,7)<.3){bc.beginPath();bc.moveTo(X+8+off,Y);bc.lineTo(X+8+off,Y+32);bc.stroke()}
+    }
+    continue;
+   }
+   bc.fillStyle=['#7fc268','#86c96e','#79b962'][(hs2(x,y,3)*3)|0];bc.fillRect(X,Y,32,32);
+   if(hs2(x,y,4)<.22){
+    bc.strokeStyle='rgba(38,92,28,.55)';bc.lineWidth=2;
+    const gx=X+6+hs2(x,y,5)*20,gy=Y+8+hs2(x,y,6)*14;
+    bc.beginPath();bc.moveTo(gx,gy);bc.lineTo(gx-2,gy-5);
+    bc.moveTo(gx+4,gy);bc.lineTo(gx+6,gy-6);
+    bc.moveTo(gx+2,gy);bc.lineTo(gx+3,gy-4);bc.stroke();bc.lineWidth=1;
+   }
+  }
+ }
+ /* ---------- 14. WALL HYGIENE (collapse door runs, open doubled layers) ---------- */
+ {
+  const hygiene=[];
+  const roomConnected=()=>{const reach=pcgReachFrom(PCG.spawn[0],PCG.spawn[1]);
+   return allRooms.every(room=>reach[(room.cy|0)*W+room.cx])};
+  for(let pass=0;pass<2;pass++)for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+   const ch=G[y][x];
+   if(pass===0&&ch==='D'&&(G[y][x+1]==='D'||G[y+1][x]==='D')){
+    G[y][x]='#';
+    if(roomConnected()){hygiene.push([x,y,ch])}else G[y][x]=ch;
+    continue}
+   /* only DOORS are punched through doubled walls: a window lets in light, it does
+      not need a corridor behind it, and punching behind every window ate the room
+      shells until whole floors went open-plan */
+   if(pass===1&&ch==='D'){
+    const horiz=(G[y][x-1]==='#'||G[y][x-1]==='W'||G[y][x-1]==='D'||G[y][x+1]==='#'||G[y][x+1]==='W'||G[y][x+1]==='D');
+    const dirs=horiz?[[0,-1],[0,1]]:[[-1,0],[1,0]];
+    for(const dd of dirs){
+     let px=x+dd[0],py=y+dd[1],n2=0;
+     while(n2<3&&px>0&&py>0&&px<W-1&&py<H-1&&G[py]&&G[py][px]==='#'){
+      const par=horiz?(G[py][px-1]==='#'&&G[py][px+1]==='#'):(G[py-1][px]==='#'&&G[py+1][px]==='#');
+      if(!par)break;
+      hygiene.push([px,py,'#']);G[py][px]='.';px+=dd[0];py+=dd[1];n2++;
+     }
+    }
+   }
+  }
+  refreshDoors();
+  if(!pcgRoutesSafe()){for(const q of hygiene)G[q[1]][q[0]]=q[2];refreshDoors()}
+ }
+ /* ---------- 15. CONTRACT ---------- */
+ refreshDoors();
+ if(!pcgRoutesSafe()||!pcgEnsureConnected(allRooms,PCG.spawn)){
+  restoreBaseMap();
+  if(attempt<3)return makePCGMap(seed,attempt+1);
+  throw new Error('Generated estate failed route validation for seed '+seed);
+ }
+ PCG.active=true;PCG.seed=seed;
+ PCG.partitions=blocks.reduce((a,b)=>a+(b.layout?b.layout.cuts:0),0);
+ PCG.doorsBuilt=Math.max(DR.length,blocks.reduce((a,b)=>a+(b.layout?(b.layout.doorCount||0):0),0));
+ PCG.furnishings=furnCount;
+ PCG.yardFeatures=hedges+trees+(fenceCount?1:0)+(garage?1:0)+(wingNote?1:0);
+ PCG.decoration=decorationReport;
+ PCG.topology=mainLayout;
+ PCG.layouts=blocks.map(b=>({name:b.name,box:b.box,rooms:b.layout?b.layout.rooms.length:1,
+  loops:b.layout?b.layout.loopCount:0,quality:b.layout?b.layout.quality.score:0,valid:b.layout?!!b.layout.valid:false}));
+ PCG.rooms=allRooms.map(room=>({x:room.x,y:room.y,w:room.w,h:room.h,color:room.color,
+  name:room.label,role:room.role,block:room.block,
+  graphDistance:Math.round(distOf(room)),parentRoom:room.parentRoom,
+  exits:room.exits.length}));
+ PCG.estate={
+  house:{x:mainBox[0],y:mainBox[1],w:mainBox[2]-mainBox[0]+1,h:mainBox[3]-mainBox[1]+1,
+   front:[frontX,frontY],wing:wingNote||null,blocks:blocks.filter(b=>b.name!=='outbuilding').length},
+  shed:shed?{x:shed.box[0],y:shed.box[1],w:shed.box[2]-shed.box[0]+1,h:shed.box[3]-shed.box[1]+1}:null,
+  vault:vault?{x:vault.box[0],y:vault.box[1],w:vault.box[2]-vault.box[0]+1,h:vault.box[3]-vault.box[1]+1}:null,
+  garage:garage?{x:garage.box[0],y:garage.box[1],w:garage.box[2]-garage.box[0]+1,h:garage.box[3]-garage.box[1]+1}:null,
+  fence:fenceY,lockedDoor,vaultDoor:vaultDoorCell,garden:[gardenX,gardenY]
+ };
+ PCG.goals=PCG_GOALS.map(q=>q.slice());
+ CD=1;
+ return PCG.partitions;
+}
 function resetPlayer(){const s=PCG.active?PCG.spawn:[28.5,37.5];P={x:s[0],y:s[1],vx:0,vy:0,aim:-PI/2,inv:[null,null,null,null],sel:0,pick:0,red:0,blue:0,hold:0,slow:0,trap:0,crouch:0,sprint:0,ft:0,tgt:null,lastCell:'',hidden:0,hx:0,hy:0}}
 const held=()=>P.inv[P.sel];
 const invAdd=o=>{if(!P.inv[P.sel]){P.inv[P.sel]=o;return P.sel}const i=P.inv.indexOf(null);if(i<0)return -1;P.inv[i]=o;return i};
