@@ -153,11 +153,11 @@ a missing 2D context method or WebGL call is reported instead of swallowed, and 
 only advanced through the game's own `requestAnimationFrame` queue.
 
 ```bash
-node test/smoke.js 80     # load, play, 2D <-> 3D, pick up + throw, 80 PCG seeds
+node test/smoke.js 100    # load, play, 2D <-> 3D, throw, 100 PCG seeds, determinism, restore
 node test/pcg-bench.js 300  # estate metrics over 300 seeds (rooms, walls, windows, locks…)
 ```
 
-`test/smoke.js` exits non-zero if any check fails — 23 checks covering the boot, the render
+`test/smoke.js` exits non-zero if any check fails — 25 checks covering the boot, the render
 loop, the 3D mesh, throwing, the seed contract (every seed generates, every estate has a
 locked door, a vault door, a study, and a finite 3D mesh) and `restoreBaseMap()`.
 

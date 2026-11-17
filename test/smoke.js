@@ -106,8 +106,19 @@ ok('room roles are all assigned', ['entry', 'kitchen', 'study', 'destination', '
   JSON.stringify(roleSeen));
 ok('seeds really differ', sigs.size > seeds * 0.6, sigs.size + '/' + seeds);
 
-/* ---------- back to the hand-built map ---------- */
+/* ---------- determinism + restore ---------- */
+const sigOf = seed => {
+  g.makePCGMap(seed);
+  return g.G.map(r => r.join('')).join('|') + JSON.stringify(g.PCG.rooms.map(r => [r.role, r.x, r.y]));
+};
+ok('the same seed always builds the same estate', sigOf(4242) === sigOf(4242));
+const snapshot = () => JSON.stringify({ G: g.G.map(r => r.join('')), FU: g.FU,
+  items: g.ITEMS.map(i => [i.k, i.x, i.y]), active: g.PCG.active, rooms: g.PCG.rooms.length });
 g.restoreBaseMap();
+const baseMap = snapshot();
+for (let i = 0; i < 12; i++) g.makePCGMap(900 + i);
+g.restoreBaseMap();
+ok('restoreBaseMap() is byte-identical after 12 estates', snapshot() === baseMap);
 ok('restoreBaseMap() leaves PCG off', g.PCG.active === false);
 ok('restoreBaseMap() restores the base map', g.PCG.rooms.length === 0);
 h.pump(10);
