@@ -30,6 +30,40 @@ There is no server component and nothing is saved between sessions.
 The overlay shows the **build stamp** (currently `b6`) next to the VIEW chip, so you can
 always tell which build is on screen.
 
+## Size: the readable source and the minified build
+
+`index.html` has to be small (it is the whole game, and people copy it around), but a
+minified file is no fun to edit. So the readable source lives in **`dev/game.src.html`**
+and `index.html` is generated from it:
+
+```bash
+node dev/build.js            # dev/game.src.html -> index.html
+node dev/build.js --check    # also verify the CSS/HTML passes changed nothing
+```
+
+| | readable source | shipped `index.html` |
+| --- | --- | --- |
+| bytes | 325,811 | **214,954** (−34%) |
+| lines | 4,402 | **1** |
+| comments | yes | none |
+| identifiers | descriptive | mangled |
+
+The minifier (`terser`, invoked through `npx`, or a local install if present) is run
+**without** the `unsafe*` compression flags and **without** property mangling: the game
+keeps string-keyed tables (`ST[k]`, `MEM[...]`) and `window.__g` is a public debug
+surface, and neither is worth risking a behaviour change for a few kilobytes. That is
+why 34% is the honest number rather than 55%.
+
+Nothing visible changes, and that is tested rather than asserted — `test/equiv.js` loads
+two builds in separate processes, pins `Math.random`/`Date.now` so both runs are
+deterministic, drives the same scripted session, and compares **every 2D canvas call and
+every style assignment** (identical arguments ⇒ identical pixels), the HUD/inventory/
+message text, the 3D vertex buffers, and 80 generated estates:
+
+```bash
+node test/equiv.js dev/game.src.html index.html 80    # -> IDENTICAL
+```
+
 ## The procedural estate (PCG)
 
 **PCG PLAY** builds a whole estate from a seed you type (1–4294967295), and the same

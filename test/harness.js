@@ -11,9 +11,10 @@ const ROOT = path.join(__dirname, '..');
 
 function loadGame(file) {
   const src = fs.readFileSync(file || path.join(ROOT, 'index.html'), 'utf8');
-  const i = src.indexOf("<script>'use strict';") + 8;
+  const open = src.indexOf('<script');
+  const i = src.indexOf('>', open) + 1;
   const j = src.lastIndexOf('</script>');
-  if (i < 8 || j < 0) throw new Error('could not find the game script tag');
+  if (open < 0 || i < 1 || j < 0) throw new Error('could not find the game script tag');
   const js = src.slice(i, j);
 
   const problems = [];
@@ -23,6 +24,20 @@ function loadGame(file) {
 
   function ctx2d() {
     const grad = { addColorStop() {} };
+    /* RECORDING: when global.__REC is an array, every canvas call (and every style
+       assignment) is appended to it. Two builds that draw the same scene produce the
+       same transcript, and identical args mean identical pixels. */
+    const rec = (name, args) => {
+      if (!global.__REC) return;
+      const parts = [];
+      for (const a of args) {
+        if (typeof a === 'number') parts.push(Number.isFinite(a) ? a.toFixed(6) : String(a));
+        else if (typeof a === 'string' || typeof a === 'boolean' || a == null) parts.push(String(a));
+        else if (a === grad) parts.push('grad');
+        else parts.push('[' + (a && a.constructor ? a.constructor.name : typeof a) + ']');
+      }
+      global.__REC.push(name + '(' + parts.join(',') + ')');
+    };
     const target = {
       fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter',
       globalAlpha: 1, font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic',
@@ -42,11 +57,22 @@ function loadGame(file) {
     };
     return new Proxy(target, {
       get(t, k) {
-        if (k in t) return t[k];
+        const v = t[k];
+        if (typeof v === 'function') {
+          return function (...args) {
+            rec(String(k), args);
+            return v.apply(t, args);
+          };
+        }
+        if (k in t) return v;
         problems.push('2D ctx missing member: ' + String(k));
         return undefined;
       },
-      set(t, k, v) { t[k] = v; return true; },
+      set(t, k, v) {
+        if (typeof k === 'string') rec('=' + k, [v]);
+        t[k] = v;
+        return true;
+      },
     });
   }
 
